@@ -6,5 +6,5 @@
 #export LD_LIBRARY_PATH=/usr/local/cuda-6.5/lib64:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
 # Run testing
-python DREAM_DM_pilot_tf.py --lr 0.0001 --decay 0.985 --bs 10 --epoch 2 --net Le --ms 32 --dropout 0.5 --test 1
+python DREAM_DM_starter_tf.py --net Le --ms 32 --test 1 -pf /scoringData
 #echo "0.5 0.5" > /output/out.txt

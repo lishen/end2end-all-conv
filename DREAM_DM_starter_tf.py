@@ -656,7 +656,7 @@ def main(args):
     parser.add_argument("--lr", dest="lr", type=float, default=0.001)
     parser.add_argument("--reg", dest="reg", type=float, default=0.00001)
     parser.add_argument("--out", dest="output", type=str, default="/modelState/out_train.txt")
-    parser.add_argument("--outtxt", dest="outtxt", type=str, default="/modelState/out.txt")
+    parser.add_argument("--outtxt", dest="outtxt", type=str, default="/output/out.txt")
     parser.add_argument("--saver", dest="saver", type=str, default="/modelState/model.ckpt")
     parser.add_argument("--decay", dest="decay", type=float, default=1.0)
     parser.add_argument("--dropout", dest="dropout", type=float, default=0.5)
