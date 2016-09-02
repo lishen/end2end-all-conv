@@ -21,7 +21,8 @@ def super_print(statement, f):
     - statement: (string) the string to print.
     - f: (opened file) this is the output file object to print to
     """
-    sys.stdout.write(statement)
+    sys.stdout.write(statement + '\n')
+    sys.stdout.flush()
     f.write(statement + '\n')
     return 0
 
@@ -49,7 +50,7 @@ def create_test_splits(path_csv_test):
     X_te = []
     Y_tr = []
     Y_te = []
-    for key_X in dict_X_left:
+    for key_X in set(dict_X_left.keys()) & set(dict_X_right.keys()):
         X_te.append((dict_X_left[key_X], dict_X_right[key_X]))
     return X_tr, X_te, Y_tr, Y_te
 
@@ -454,7 +455,7 @@ def test_out(sess, list_dims, list_placeholders, list_operations, X_te, opts):
     # Let's unpack the lists
     matrix_size, num_channels = list_dims
     x, y, keep_prob = list_placeholders
-    saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
+    prob, pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
     # Initializing what to put in.
     dataXX = np.zeros((1, matrix_size, matrix_size, num_channels), dtype=np.float32)
     # Running through the images.
@@ -466,7 +467,11 @@ def test_out(sess, list_dims, list_placeholders, list_operations, X_te, opts):
         pred_left = sess.run(pred, feed_dict={x: dataXX, keep_prob: 1.0})
         dataXX[0, :, :, 0] = read_in_one_image(opts.path_data, right_img, matrix_size)
         pred_right = sess.run(pred, feed_dict={x: dataXX, keep_prob: 1.0})
-        f.write(str(pred_left) + '\t' + str(pred_right) + '\n')
+        statement = str(pred_left) + '\t' + str(pred_right)
+        super_print(statement, f)
+    if len(X_te) == 0:
+        statement = str(0.5) + '\t' + str(0.5)
+        super_print(statement, f)
     f.close()
 
 def test_all(sess, list_dims, list_placeholders, list_operations, X_te, Y_te, opts):
@@ -484,7 +489,7 @@ def test_all(sess, list_dims, list_placeholders, list_operations, X_te, Y_te, op
     # Let's unpack the lists.
     matrix_size, num_channels = list_dims
     x, y, keep_prob = list_placeholders
-    pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
+    prob, pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
     # Initializing what to put in.
     loss_te = 0.0
     acc_te = 0.0
@@ -532,7 +537,7 @@ def train_one_iteration(sess, list_dims, list_placeholders, list_operations, X_t
     # Let's unpack the lists.
     matrix_size, num_channels = list_dims
     x, y, keep_prob = list_placeholders
-    pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
+    prob, pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init = list_operations
     # Initializing what to put in.
     dataXX = np.zeros((opts.bs, matrix_size, matrix_size, num_channels), dtype=np.float32)
     dataYY = np.zeros((opts.bs, ), dtype=np.int64)
@@ -557,14 +562,14 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
     - f: (opened file) for output writing
     """
     # Setting the size and number of channels of input.
-    matrix_size = 32
+    matrix_size = opts.matrix_size
     num_channels = 1
     list_dims = [matrix_size, num_channels]
     # Finding out other constant values to be used.
     data_count = len(X_tr)
     iter_count = int(np.ceil(float(opts.epoch) * data_count / opts.bs))
     epoch_every = int(np.ceil(float(iter_count) / opts.epoch))
-    print_every = min([2, epoch_every])
+    print_every = min([100, epoch_every])
     max_val_acc = 0.0
     # Creating Placeholders
     x = tf.placeholder(tf.float32, [None, matrix_size, matrix_size, num_channels])
@@ -589,10 +594,11 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
     L2_loss = get_L2_loss(opts.reg)
     CE_loss = get_CE_loss(pred, y)
     cost = L2_loss + CE_loss
+    prob = tf.nn.softmax(pred)
     optimizer = get_optimizer(cost, lr=opts.lr, decay=opts.decay, epoch_every=epoch_every)
     accuracy = get_accuracy(pred, y)
     init = tf.initialize_all_variables()
-    list_operations = [pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init]
+    list_operations = [prob, pred, saver, L2_loss, CE_loss, cost, optimizer, accuracy, init]
     # Do the Training
     print "Training Started..."
     start_time = time.time()
@@ -603,11 +609,12 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
         if opts.test:
             saver.restore(sess, opts.saver)
             test_out(sess, list_dims, list_placeholders, list_operations, X_te, opts)
-        for iter in range(iter_count):
+            return 0
+        for iter in range(1):#range(iter_count):
             loss_temp, acc_temp = train_one_iteration(sess, list_dims, list_placeholders, list_operations, X_tr, Y_tr, opts)
             loss_tr += loss_temp / print_every
             acc_tr += acc_temp / print_every
-            if ((iter+1)%print_every) == 0:
+            if ((iter)%print_every) == 0:
                 current_time = time.time()
                 loss_te, acc_te, ROC_values = test_all(sess, list_dims, list_placeholders, list_operations, X_te, Y_te, opts)
                 # Printing out stuff
@@ -627,6 +634,8 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
                 if acc_te > max_val_acc:
                     max_val_acc = acc_te
                     saver.save(sess, opts.saver)
+                if (current_time - start_time)/60 > opts.time:
+                    break
     statement = "Best you could do: " + str(max_val_acc)
     super_print(statement, f)
     return 0
@@ -654,8 +663,16 @@ def main(args):
     parser.add_argument("--bs", dest="bs", type=int, default=10)
     parser.add_argument("--epoch", dest="epoch", type=int, default=10)
     parser.add_argument("--test", dest="test", type=int, default=0)
+    parser.add_argument("--ms", dest="matrix_size", type=int, default=224)
+    parser.add_argument("--time", dest="time", type=float, default=1000000)
     opts = parser.parse_args(args[1:])
+    # Setting up the output file.
+    if isfile(opts.output):
+        remove(opts.output)
+    f = open(opts.output, 'w')
     # Finding list of data.
+    statement = "Parsing the csv's."
+    super_print(statement, f)
     path_csv_crosswalk = opts.csv1
     path_csv_metadata = opts.csv2
     path_csv_test = opts.csv3
@@ -663,10 +680,6 @@ def main(args):
         X_tr, X_te, Y_tr, Y_te = create_test_splits(path_csv_test)
     else:
         X_tr, X_te, Y_tr, Y_te = create_data_splits(path_csv_crosswalk, path_csv_metadata)
-    # Setting up the output file.
-    if isfile(opts.output):
-        remove(opts.output)
-    f = open(opts.output, 'w')
     # Train a network and print a bunch of information.
     statement = "Let's start the training!"
     super_print(statement, f)
