@@ -74,7 +74,7 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
             if counter == 0:
                 counter += 1
                 continue
-            dict_img_to_patside[row[1].strip()] = (row[0].strip(), row[2].strip())
+            dict_img_to_patside[row[5].strip()] = (row[0].strip(), row[4].strip())
     # Now, let's map the tuple to cancer or non-cancer.
     dict_tuple_to_cancer = {}
     counter = 0
@@ -649,8 +649,8 @@ def main(args):
     # Setting up reading of command line options, storing defaults if not provided.
     parser = argparse.ArgumentParser(description = "Do deep learning!")
     parser.add_argument("--pf", dest="path_data", type=str, default="/trainingData")
-    parser.add_argument("--csv1", dest="csv1", type=str, default="/metadata/images_crosswalk_SubChallenge1.tsv")
-    parser.add_argument("--csv2", dest="csv2", type=str, default="/metadata/exams_metadata_SubChallenge1.tsv")
+    parser.add_argument("--csv1", dest="csv1", type=str, default="/metadata/images_crosswalk.tsv")
+    parser.add_argument("--csv2", dest="csv2", type=str, default="/metadata/exams_metadata.tsv")
     parser.add_argument("--csv3", dest="csv3", type=str, default="/scoringData/image_metadata.tsv")
     parser.add_argument("--net", dest="net", type=str, default="GoogLe")
     parser.add_argument("--lr", dest="lr", type=float, default=0.001)
