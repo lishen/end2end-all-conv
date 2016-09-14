@@ -610,7 +610,7 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
             saver.restore(sess, opts.saver)
             test_out(sess, list_dims, list_placeholders, list_operations, X_te, opts)
             return 0
-        for iter in range(1):#range(iter_count):
+        for iter in range(iter_count):
             loss_temp, acc_temp = train_one_iteration(sess, list_dims, list_placeholders, list_operations, X_tr, Y_tr, opts)
             loss_tr += loss_temp / print_every
             acc_tr += acc_temp / print_every

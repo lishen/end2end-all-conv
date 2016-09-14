@@ -8,6 +8,6 @@ RUN pip install -U scikit-learn
 RUN pip install tflearn #git+https://github.com/tflearn/tflearn.git
 
 WORKDIR /
-COPY DREAM_DM_pilot_tf.py .
+COPY DREAM_DM_starter_tf.py .
 COPY train.sh .
 COPY test.sh .
