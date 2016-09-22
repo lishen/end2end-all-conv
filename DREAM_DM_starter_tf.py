@@ -2,6 +2,7 @@ import argparse
 import csv
 import dicom
 import gzip
+from gzip import GzipFile
 import numpy as np
 from os import listdir, remove, mkdir
 from os.path import isfile, join, isdir
@@ -118,6 +119,10 @@ def read_in_one_image(path_img, name_img, matrix_size, data_aug=False):
     # Setting up the filepaths and opening up the format.
     #filepath_temp = join(path_img, 'temp.dcm')
     filepath_img = join(path_img, name_img)
+    if not isfile(filepath_img):
+        filepath_img += '.gz'
+        if not isfile(filepath_img):
+            raise Exception
     # Reading/uncompressing/writing
     # if isfile(filepath_temp):
     #    remove(filepath_temp)
@@ -126,7 +131,10 @@ def read_in_one_image(path_img, name_img, matrix_size, data_aug=False):
     #    with open(filepath_temp, 'w') as f_dcm:
     #        f_dcm.write(file_content)
     # Reading in dicom file to ndarray and processing
-    dicom_content = dicom.read_file(filepath_img)
+    if '.dcm.gz' in filepath_img:
+        dicom_content = dicom.read_file(GzipFile(filepath_img))
+    else:
+        dicom_content = dicom.read_file(filepath_img)
     img = dicom_content.pixel_array
     img = scipy.misc.imresize(img, (matrix_size, matrix_size), interp='cubic')
     img = img.astype(np.float32)
