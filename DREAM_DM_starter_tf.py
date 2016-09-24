@@ -86,8 +86,8 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
             if counter == 0:
                 counter += 1
                 continue
-            dict_tuple_to_cancer[(row[0].strip(), 'L')] = int(row[1])
-            dict_tuple_to_cancer[(row[0].strip(), 'R')] = int(row[2])
+            dict_tuple_to_cancer[(row[0].strip(), 'L')] = int(row[3])
+            dict_tuple_to_cancer[(row[0].strip(), 'R')] = int(row[4])
     # Alright, now, let's connect those dictionaries together...
     X_tot = []
     Y_tot = []
@@ -551,7 +551,7 @@ def train_one_iteration(sess, list_dims, list_placeholders, list_operations, X_t
     ind_list = np.random.choice(range(len(X_tr)), opts.bs, replace=False)
     # Fill in our dataXX and dataYY for training one batch.
     for iter_data,ind in enumerate(ind_list):
-        dataXX[iter_data, :, :, 0] = read_in_one_image(opts.path_data, X_tr[ind], matrix_size, data_aug=True)
+        dataXX[iter_data, :, :, 0] = read_in_one_image(opts.path_data, X_tr[ind], matrix_size, data_aug=False)
         dataYY[iter_data] = Y_tr[ind]
     tflearn.is_training(True)
     _, loss_iter, acc_iter = sess.run((optimizer, cost, accuracy), feed_dict={x: dataXX, y: dataYY, keep_prob: opts.dropout})
