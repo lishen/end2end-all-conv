@@ -48,10 +48,10 @@ def create_test_splits(path_csv_test):
                 continue
             if row[3].strip()=='R':
                 dict_X_right[row[0].strip()] = row[4].strip()
-                Y_te.append((row[0].strip(), 'R', row[4].strip))
+                X_te.append((row[0].strip(), 'R', row[4].strip()))
             elif row[3].strip()=='L':
                 dict_X_left[row[0].strip()] = row[4].strip()
-                Y_te.append((row[0].strip(), 'L', row[4].strip))
+                X_te.append((row[0].strip(), 'L', row[4].strip()))
     #for key_X in set(dict_X_left.keys()) & set(dict_X_right.keys()):
     #    X_te.append((dict_X_left[key_X], dict_X_right[key_X]))
     return X_tr, X_te, Y_tr, Y_te
@@ -462,12 +462,14 @@ def test_out(sess, list_dims, list_placeholders, list_operations, X_te, opts):
     dataXX = np.zeros((1, matrix_size, matrix_size, num_channels), dtype=np.float32)
     # Running through the images.
     f = open(opts.outtxt, 'w')
+    statement = 'subjectID' + '\t' + 'laterality' + '\t' + 'prediction'
+    super_print(statement, f)
     for iter_data in range(len(X_te)):
         id_iter, lat_iter, img_iter = X_te[iter_data]
-        dataXX[0, :, :, 0] = read_in_one_image(opts.path_data, left_img, matrix_size)
+        dataXX[0, :, :, 0] = read_in_one_image(opts.path_data, img_iter, matrix_size)
         tflearn.is_training(False)
-        pred_iter = sess.run(pred, feed_dict={x: dataXX, keep_prob: 1.0})
-        statement = pred_iter + '\t' + lat_iter + '\t' + str(pred_iter)
+        pred_iter = sess.run(prob, feed_dict={x: dataXX, keep_prob: 1.0})
+        statement = id_iter + '\t' + lat_iter + '\t' + str(pred_iter[0][1])
         super_print(statement, f)
         #left_img, right_img = X_te[iter_data]
         #dataXX[0, :, :, 0] = read_in_one_image(opts.path_data, left_img, matrix_size)
