@@ -92,14 +92,18 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
             if counter == 0:
                 counter += 1
                 continue
-            dict_tuple_to_cancer[(row[0].strip(), 'L')] = int(row[3])
-            dict_tuple_to_cancer[(row[0].strip(), 'R')] = int(row[4])
+            try:
+                dict_tuple_to_cancer[(row[0].strip(), 'L')] = int(row[3])
+                dict_tuple_to_cancer[(row[0].strip(), 'R')] = int(row[4])
+            except ValueError:
+                pass
     # Alright, now, let's connect those dictionaries together...
     X_tot = []
     Y_tot = []
     for img_name in dict_img_to_patside:
-        X_tot.append(img_name)
-        Y_tot.append(dict_tuple_to_cancer[dict_img_to_patside[img_name]])
+        if dict_img_to_patside[img_name] in dict_tuple_to_cancer:
+            X_tot.append(img_name)
+            Y_tot.append(dict_tuple_to_cancer[dict_img_to_patside[img_name]])
     # Making train/val split and returning.
     X_tr, X_te, Y_tr, Y_te = train_test_split(X_tot, Y_tot, test_size=0.001)
     return X_tr, X_te, Y_tr, Y_te
