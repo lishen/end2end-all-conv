@@ -3,3 +3,4 @@ modelState
 output
 trainingData
 nohup.out
+*.sublime-*
