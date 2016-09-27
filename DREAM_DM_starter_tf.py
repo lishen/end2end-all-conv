@@ -645,41 +645,43 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
     epoch_every = int(np.ceil(float(iter_count) / opts.epoch))
     print_every = min([100, epoch_every])
     max_val_acc = 0.0
-    # Creating Placeholders
-    x = tf.placeholder(
-        tf.float32, [None, matrix_size, matrix_size, num_channels])
-    y = tf.placeholder(tf.int64)
-    keep_prob = tf.placeholder(tf.float32)
-    list_placeholders = [x, y, keep_prob]
-    # Create the network
-    if opts.net == "Alex":
-        pred = Alex_Net(x, 2, keep_prob=keep_prob)
-    elif opts.net == "Le":
-        pred = Le_Net(x, 2, keep_prob=keep_prob)
-    elif opts.net == "VGG16":
-        pred = VGG16_Net(x, 2, keep_prob=keep_prob)
-    elif opts.net == "GoogLe":
-        pred = GoogLe_Net(x, 2, keep_prob=keep_prob)
-    else:
-        statement = "Please specify valid network (e.g. Alex, VGG16, GoogLe)."
-        super_print(statement, f)
-        return 0
-    # Define Operations in TF Graph
-    saver = tf.train.Saver()
-    L2_loss = get_L2_loss(opts.reg)
-    CE_loss = get_CE_loss(pred, y)
-    cost = L2_loss + CE_loss
-    prob = tf.nn.softmax(pred)
-    optimizer = get_optimizer(
-        cost, lr=opts.lr, decay=opts.decay, epoch_every=epoch_every)
-    accuracy = get_accuracy(pred, y)
-    init = tf.initialize_all_variables()
-    list_operations = [prob, pred, saver, L2_loss,
-                       CE_loss, cost, optimizer, accuracy, init]
+    with tf.device('/gpu:1'):
+        # Creating Placeholders
+        x = tf.placeholder(
+            tf.float32, [None, matrix_size, matrix_size, num_channels])
+        y = tf.placeholder(tf.int64)
+        keep_prob = tf.placeholder(tf.float32)
+        list_placeholders = [x, y, keep_prob]
+        # Create the network
+        if opts.net == "Alex":
+            pred = Alex_Net(x, 2, keep_prob=keep_prob)
+        elif opts.net == "Le":
+            pred = Le_Net(x, 2, keep_prob=keep_prob)
+        elif opts.net == "VGG16":
+            pred = VGG16_Net(x, 2, keep_prob=keep_prob)
+        elif opts.net == "GoogLe":
+            pred = GoogLe_Net(x, 2, keep_prob=keep_prob)
+        else:
+            statement = "Please specify valid network (e.g. Alex, VGG16, GoogLe)."
+            super_print(statement, f)
+            return 0
+        # Define Operations in TF Graph
+        saver = tf.train.Saver()
+        L2_loss = get_L2_loss(opts.reg)
+        CE_loss = get_CE_loss(pred, y)
+        cost = L2_loss + CE_loss
+        prob = tf.nn.softmax(pred)
+        optimizer = get_optimizer(
+            cost, lr=opts.lr, decay=opts.decay, epoch_every=epoch_every)
+        accuracy = get_accuracy(pred, y)
+        init = tf.initialize_all_variables()
+        list_operations = [prob, pred, saver, L2_loss,
+                           CE_loss, cost, optimizer, accuracy, init]
     # Do the Training
     print "Training Started..."
     start_time = time.time()
-    with tf.Session() as sess:
+    config = tf.ConfigProto(log_device_placement=True, allow_soft_placement=True)
+    with tf.Session(config=config) as sess:
         sess.run(init)
         loss_tr = 0.0
         acc_tr = 0.0
