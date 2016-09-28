@@ -105,7 +105,7 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
             X_tot.append(img_name)
             Y_tot.append(dict_tuple_to_cancer[dict_img_to_patside[img_name]])
     # Making train/val split and returning.
-    X_tr, X_te, Y_tr, Y_te = train_test_split(X_tot, Y_tot, test_size=0.01)
+    X_tr, X_te, Y_tr, Y_te = train_test_split(X_tot, Y_tot, test_size=0.2)
     return X_tr, X_te, Y_tr, Y_te
 
 
