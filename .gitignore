@@ -4,3 +4,4 @@ output
 trainingData
 nohup.out
 *.sublime-*
+.ipynb_checkpoints
