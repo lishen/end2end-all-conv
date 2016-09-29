@@ -680,7 +680,7 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
     # Do the Training
     print "Training Started..."
     start_time = time.time()
-    config = tf.ConfigProto(log_device_placement=True, allow_soft_placement=True)
+    config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     with tf.Session(config=config) as sess:
         sess.run(init)
         loss_tr = 0.0
