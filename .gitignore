@@ -2,6 +2,7 @@ metadata
 modelState
 output
 trainingData
+preprocessedData
 nohup.out
 *.sublime-*
 .ipynb_checkpoints
