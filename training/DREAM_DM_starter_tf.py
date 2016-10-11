@@ -110,6 +110,20 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
     return X_tr, X_te, Y_tr, Y_te
 
 
+def create_data_splits2(path_csv_crosswalk, path_csv_metadata):
+    '''A substitute function for create_data_splits using DMMetaManager
+    '''
+    from meta import DMMetaManager
+
+    meta_man = DMMetaManager(exam_tsv=path_csv_metadata, 
+                             img_tsv=path_csv_crosswalk, 
+                             img_folder='', 
+                             img_extension='dcm')
+    img_list, lab_list = meta_man.get_flatten_img_list()
+    X_tr, X_te, Y_tr, Y_te = train_test_split(img_list, lab_list, test_size=0.2)
+    return X_tr, X_te, Y_tr, Y_te
+
+
 def read_in_one_image(path_img, name_img, matrix_size, data_aug=False):
     """
     This is SUPER basic.  This can be improved.
@@ -775,7 +789,9 @@ def main(args):
     if opts.test:
         X_tr, X_te, Y_tr, Y_te = create_test_splits(path_csv_test)
     else:
-        X_tr, X_te, Y_tr, Y_te = create_data_splits(
+        # X_tr, X_te, Y_tr, Y_te = create_data_splits(
+        #     path_csv_crosswalk, path_csv_metadata)
+        X_tr, X_te, Y_tr, Y_te = create_data_splits2(
             path_csv_crosswalk, path_csv_metadata)
     # Train a network and print a bunch of information.
     statement = "Let's start the training!"
@@ -788,5 +804,8 @@ def main(args):
     f.close()
     return 0
 
-if __name__ == '__main__':
+if __name__ == '__main__' and __package__ is None:
+    from os import sys, path
+    sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
+    sys.path.append(path.dirname(path.abspath(__file__)))
     main(sys.argv)
