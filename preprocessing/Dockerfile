@@ -92,3 +92,9 @@ RUN apt-get install -y parallel imagemagick
 WORKDIR /
 COPY preprocess.py ./
 COPY preprocess.sh ./
+COPY train.sh ./
+
+
+
+
+
