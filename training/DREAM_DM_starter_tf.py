@@ -1,3 +1,4 @@
+from __future__ import print_function
 import argparse
 import csv
 import dicom
@@ -645,7 +646,8 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
     epoch_every = int(np.ceil(float(iter_count) / opts.epoch))
     print_every = min([100, epoch_every])
     max_val_acc = 0.0
-    with tf.device('/gpu:1'):
+    super_print("User specified device: " + opts.device, f)
+    with tf.device(opts.device):
         # Creating Placeholders
         x = tf.placeholder(
             tf.float32, [None, matrix_size, matrix_size, num_channels])
@@ -678,7 +680,7 @@ def train_net(X_tr, X_te, Y_tr, Y_te, opts, f):
         list_operations = [prob, pred, saver, L2_loss,
                            CE_loss, cost, optimizer, accuracy, init]
     # Do the Training
-    print "Training Started..."
+    print("Training Started...")
     start_time = time.time()
     config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     with tf.Session(config=config) as sess:
@@ -758,6 +760,7 @@ def main(args):
     parser.add_argument("--test", dest="test", type=int, default=0)
     parser.add_argument("--ms", dest="matrix_size", type=int, default=224)
     parser.add_argument("--time", dest="time", type=float, default=1000000)
+    parser.add_argument("--device", dest="device", type=str, default="/gpu:0")
     opts = parser.parse_args(args[1:])
     # Setting up the output file.
     if isfile(opts.output):
