@@ -110,8 +110,10 @@ def create_data_splits(path_csv_crosswalk, path_csv_metadata):
     return X_tr, X_te, Y_tr, Y_te
 
 
-def create_data_splits2(path_csv_crosswalk, path_csv_metadata):
+def create_data_splits2(path_csv_crosswalk, path_csv_metadata, seed, f):
     '''A substitute function for create_data_splits using DMMetaManager
+    Args:
+        seed (int): an integer to seed the random state for split.
     '''
     from meta import DMMetaManager
 
@@ -120,7 +122,13 @@ def create_data_splits2(path_csv_crosswalk, path_csv_metadata):
                              img_folder='', 
                              img_extension='dcm')
     img_list, lab_list = meta_man.get_flatten_img_list()
-    X_tr, X_te, Y_tr, Y_te = train_test_split(img_list, lab_list, test_size=0.2)
+    X_tr, X_te, Y_tr, Y_te = train_test_split(img_list, lab_list, test_size=0.2, 
+                                              random_state=seed)
+    val_n_pos = sum(np.array(Y_te) == 1)
+    val_n_neg = sum(np.array(Y_te) == 0)
+    statement = "Validation number of positive cases: %d, negative cases: %d."
+    statement = statement % (val_n_pos, val_n_neg)
+    super_print(statement, f)
     return X_tr, X_te, Y_tr, Y_te
 
 
@@ -775,6 +783,7 @@ def main(args):
     parser.add_argument("--ms", dest="matrix_size", type=int, default=224)
     parser.add_argument("--time", dest="time", type=float, default=1000000)
     parser.add_argument("--device", dest="device", type=str, default="/gpu:0")
+    parser.add_argument("--seed", dest="seed", type=int, default=1)
     opts = parser.parse_args(args[1:])
     # Setting up the output file.
     if isfile(opts.output):
@@ -792,7 +801,7 @@ def main(args):
         # X_tr, X_te, Y_tr, Y_te = create_data_splits(
         #     path_csv_crosswalk, path_csv_metadata)
         X_tr, X_te, Y_tr, Y_te = create_data_splits2(
-            path_csv_crosswalk, path_csv_metadata)
+            path_csv_crosswalk, path_csv_metadata, opts.seed, f)
     # Train a network and print a bunch of information.
     statement = "Let's start the training!"
     super_print(statement, f)
