@@ -54,15 +54,99 @@ class DMMetaManager(object):
         return (img, lab)
 
 
-    def get_flatten_breast_list(self, meta=False):
-        '''Get breast-level training data list
+    def _get_info_per_exam(self, exam):
+        '''Get training-related info for each exam as a dict
+        Args:
+            exam (DataFrame): data for an exam.
+        Returns:
+            A dict containing info for each breast: the cancer status for 
+            each breast and the image paths to the CC and MLO views. If an 
+            image is missing, the corresponding path is None. 
+        Notes:
+            In current implementation, only CC and MLO views are included. 
+            All other meta info are not included.
         '''
-        pass
+        info = {'L': {}, 'R': {}}
+        info['L']['cancer'] = str(exam['cancerL'].iloc[0])
+        info['R']['cancer'] = str(exam['cancerR'].iloc[0])
+        exam_indexed = exam.set_index(['laterality', 'view', 'imageIndex'])
+        try:
+            info['L']['CC'] = exam_indexed.loc['L'].loc['CC'][['filename']]
+        except KeyError:
+            info['L']['CC'] = None
+        try:
+            info['R']['CC'] = exam_indexed.loc['R'].loc['CC'][['filename']]
+        except KeyError:
+            info['R']['CC'] = None
+        try:
+            info['L']['MLO'] = exam_indexed.loc['L'].loc['MLO'][['filename']]
+        except KeyError:
+            info['L']['MLO'] = None
+        try:
+            info['R']['MLO'] = exam_indexed.loc['R'].loc['MLO'][['filename']]
+        except KeyError:
+            info['R']['MLO'] = None
+        return info
 
-    def get_last_breast_list(self, meta=False):
-        '''Get the last exam breast-level training data list
+
+    def subj_generator(self):
+        '''A generator for the data of each subject
+        Returns:
+            A tuple of (subject ID, the corresponding records of the subject).
         '''
-        pass
+        subj_list = self.exam_img_df.index.levels[0]
+        for subj_id in subj_list:
+            yield (subj_id, self.exam_img_df.loc[subj_id])
+
+
+    def exam_generator(self):
+        '''A generator for the data of each exam
+        Returns:
+            A tuple of (subject ID, exam Index, the corresponding records of 
+            the exam).
+        Notes:
+            All exams are flattened.
+        '''
+        for subj_id, subj_dat in self.subj_generator():
+            for ex_idx in subj_dat.index.unique():
+                yield (subj_id, ex_idx, subj_dat.loc[ex_idx])
+
+
+    def last_exam_generator(self):
+        '''A generator for the data of the last exam of each subject
+        Returns:
+            A tuple of (subject ID, exam Index, the corresponding records of 
+            the exam).
+        '''
+        for subj_id, subj_dat in self.subj_generator():
+            last_idx = subj_dat.index.max()
+            yield (subj_id, last_idx, subj_dat.loc[last_idx])
+
+
+    def get_flatten_exam_list(self, meta=False):
+        '''Get exam-level training data list
+        Returns:
+            A list of all exams for all subjects. Each element is a tuple of 
+            (subject ID, exam Index, a dict of extracted info for the exam).
+        '''
+        exam_list = []
+        for subj_id, ex_idx, exam_dat in self.exam_generator():
+            exam_list.append( (subj_id, ex_idx, 
+                               self._get_info_per_exam(exam_dat)) )
+        return exam_list
+
+
+    def get_last_exam_list(self, meta=False):
+        '''Get the last exam training data list
+        Returns:
+            A list of the last exams for each subject. Each element is a tuple 
+            of (subject ID, exam Index, a dict of extracted info for the exam).
+        '''
+        exam_list = []
+        for subj_id, ex_idx, exam_dat in self.last_exam_generator():
+            exam_list.append( (subj_id, ex_idx, 
+                               self._get_info_per_exam(exam_dat)) )
+        return exam_list
 
 
 
