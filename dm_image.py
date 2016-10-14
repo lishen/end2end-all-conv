@@ -1,9 +1,10 @@
 import numpy as np
+from numpy.random import RandomState
 from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import keras.backend as K
 import cv2
-
+from meta import UNIMAGED_INT
 
 class DMImgListIterator(Iterator):
 
@@ -88,6 +89,139 @@ class DMImgListIterator(Iterator):
         return batch_x, batch_y
 
 
+class DMExamListIterator(Iterator):
+
+    def __init__(self, exam_list, image_data_generator,
+                 target_size=(256, 256), dim_ordering='default',
+                 class_mode='sparse',
+                 batch_size=16, shuffle=True, seed=None,
+                 save_to_dir=None, save_prefix='', save_format='jpeg'):
+        if dim_ordering == 'default':
+            dim_ordering = K.image_dim_ordering()
+        self.image_data_generator = image_data_generator
+        self.target_size = tuple(target_size)
+        self.dim_ordering = dim_ordering
+        # Always gray-scale. Two channels: CC and MLO.
+        if self.dim_ordering == 'tf':
+            self.image_shape = self.target_size + (2,)
+        else:
+            self.image_shape = (2,) + self.target_size
+        if class_mode not in {'categorical', 'binary', 'sparse', None}:
+            raise ValueError('Invalid class_mode:', class_mode,
+                             '; expected one of "categorical", '
+                             '"binary", "sparse", or None.')
+        self.class_mode = class_mode
+        self.seed = seed
+        self.save_to_dir = save_to_dir
+        self.save_prefix = save_prefix
+        self.save_format = save_format
+        # Convert exam list.
+        self.exam_list = exam_list
+        self.nb_exam = len(exam_list)
+        self.nb_class = 2
+        self.classes = [ (e[2]['L']['cancer'], e[2]['R']['cancer']) 
+                         for e in exam_list ]
+        self.classes = np.array(self.classes)
+        print('For left breasts, normal=%d, cancer=%d, unimaged=%d.' % 
+            (np.sum(self.classes[:, 0] == 0), 
+             np.sum(self.classes[:, 0] == 1), 
+             np.sum(self.classes[:, 0] == UNIMAGED_INT)))
+        print('For right breasts, normal=%d, cancer=%d, unimaged=%d.' % 
+            (np.sum(self.classes[:, 1] == 0), 
+             np.sum(self.classes[:, 1] == 1), 
+             np.sum(self.classes[:, 1] == UNIMAGED_INT)))
+
+        super(DMExamListIterator, self).__init__(
+            self.nb_exam, batch_size, shuffle, seed)
+
+
+    def next(self):
+        with self.lock:
+            index_array, current_index, current_batch_size = next(self.index_generator)
+            current_batch_rs = RandomState(self.seed + self.total_batches_seen)
+        # The transformation of images is not under thread lock so it can be done in parallel
+        nb_unimaged = np.sum(self.classes[index_array, :] == UNIMAGED_INT)
+        # batch size measures the number of exams, an exam has two breasts.
+        current_batch_size = current_batch_size*2 - nb_unimaged
+        batch_x = np.zeros((current_batch_size,) + self.image_shape)
+
+        def rand_draw_img(img_df):
+            '''Randomly read an image for repeated imaging
+            '''
+            fname = img_df['filename'].sample(1, random_state=current_batch_rs).iloc[0]
+            img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
+            img = cv2.resize(img, dsize=self.target_size, interpolation=cv2.INTER_CUBIC)
+            return img
+
+        def read_breast_imgs(breast_dat):
+            '''Read the images for both views for a breast
+            '''
+            #!!! if a view is missing, use a zero-filled 2D array.
+            #!!! this may need to be changed depending on the deep learning design.
+            if breast_dat['CC'] is None:
+                img_cc = np.zeros(self.target_size)
+            else:
+                img_cc = rand_draw_img(breast_dat['CC'])
+            if breast_dat['MLO'] is None:
+                img_mlo = np.zeros(self.target_size)
+            else:
+                img_mlo = rand_draw_img(breast_dat['MLO'])
+            if self.dim_ordering == 'th':
+                return np.stack((img_cc, img_mlo), axis=0)
+            else:
+                return np.stack((img_cc, img_mlo), axis=-1)
+            
+        # build batch of image data
+        adv = 0
+        for i in index_array:
+            exam_dat = self.exam_list[i][2]
+            if not self.classes[i, 0] == UNIMAGED_INT:
+                x = read_breast_imgs(exam_dat['L'])
+                x = self.image_data_generator.random_transform(x)
+                x = self.image_data_generator.standardize(x)
+                batch_x[adv] = x
+                adv += 1
+            if not self.classes[i, 1] == UNIMAGED_INT:
+                x = read_breast_imgs(exam_dat['R'])
+                x = self.image_data_generator.random_transform(x)
+                x = self.image_data_generator.standardize(x)
+                batch_x[adv] = x
+                adv += 1
+
+        # optionally save augmented images to disk for debugging purposes
+        if self.save_to_dir:
+            for i in range(current_batch_size):
+                fname_base = '{prefix}_{index}_{hash}'.format(prefix=self.save_prefix,
+                                                              index=current_index + i,
+                                                              hash=np.random.randint(1e4))
+                fname_cc = fname_base + '_cc.' + self.save_format
+                fname_mlo = fname_base + '_mlo.' + self.save_format
+                img_two_views = batch_x[i]
+                if self.dim_ordering == 'th':
+                    img_cc = img_two_views[0]
+                    img_mlo = img_two_views[1]
+                else:
+                    img_cc = img_two_views[:, :, 0]
+                    img_mlo = img_two_views[:, :, 1]
+                cv2.imwrite(path.join(self.save_to_dir, fname_cc), img_cc)
+                cv2.imwrite(path.join(self.save_to_dir, fname_mlo), img_mlo)
+        
+        # build batch of labels
+        flat_classes = self.classes[index_array, :].ravel()
+        flat_classes = flat_classes[flat_classes != UNIMAGED_INT]
+        if self.class_mode == 'sparse':
+            batch_y = flat_classes
+        elif self.class_mode == 'binary':
+            batch_y = flat_classes.astype('float32')
+        elif self.class_mode == 'categorical':
+            batch_y = np.zeros((len(batch_x), self.nb_class), dtype='float32')
+            for i, label in enumerate(flat_classes):
+                batch_y[i, label] = 1.
+        else:
+            return batch_x
+        return batch_x, batch_y
+
+
 class DMImageDataGenerator(ImageDataGenerator):
 
     def __init__(self,
@@ -143,8 +277,17 @@ class DMImageDataGenerator(ImageDataGenerator):
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
 
 
-    def flow_from_exam_list():
-        pass
+    def flow_from_exam_list(self, exam_list, 
+                           target_size=(256, 256), class_mode='sparse',
+                           batch_size=16, shuffle=True, seed=None,
+                           save_to_dir=None, save_prefix='', save_format='jpeg'):
+        return DMExamListIterator(
+            exam_list, self, 
+            target_size=target_size, class_mode=class_mode,
+            dim_ordering=self.dim_ordering,
+            batch_size=batch_size, shuffle=shuffle, seed=seed,
+            save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
+
 
 
 
