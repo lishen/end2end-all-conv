@@ -1,6 +1,8 @@
 import pandas as pd
 from os import path
 
+UNIMAGED_INT = -99  # A global definition for the int represention for unimaged breast.
+
 class DMMetaManager(object):
     '''Class for reading meta data and feeding them to training
     '''
@@ -46,9 +48,11 @@ class DMMetaManager(object):
             img_name = dat['filename']
             laterality = dat['laterality']
             cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
-            ##!! if breast is not imaged (marked '.'), set cancer status to 0.
-            ##!! this definitely needs to be better dealt with later.
-            cancer = 0 if cancer == '.' else int(cancer) 
+            # cancer = 0 if cancer == '.' else int(cancer)
+            # No need to worry about the rows where cancer='.' because the 
+            # filenames must correspond to the other breast. The labels of 
+            # '.' will not appear in the training data.
+            cancer = int(cancer)
             img.append(img_name)
             lab.append(cancer)
         return (img, lab)
@@ -67,8 +71,12 @@ class DMMetaManager(object):
             All other meta info are not included.
         '''
         info = {'L': {}, 'R': {}}
-        info['L']['cancer'] = str(exam['cancerL'].iloc[0])
-        info['R']['cancer'] = str(exam['cancerR'].iloc[0])
+        cancerL = exam['cancerL'].iloc[0]
+        cancerL = int(cancerL) if cancerL != '.' else UNIMAGED_INT
+        cancerR = exam['cancerR'].iloc[0]
+        cancerR = int(cancerR) if cancerR != '.' else UNIMAGED_INT
+        info['L']['cancer'] = cancerL
+        info['R']['cancer'] = cancerR
         exam_indexed = exam.set_index(['laterality', 'view', 'imageIndex'])
         try:
             info['L']['CC'] = exam_indexed.loc['L'].loc['CC'][['filename']]
