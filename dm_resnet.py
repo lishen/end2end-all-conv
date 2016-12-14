@@ -1,3 +1,5 @@
+# This code is originally from: https://github.com/raghakot/keras-resnet
+# Modified by Li Shen for DM challenge.
 from keras.models import Model
 from keras.layers import (
     Input,
