@@ -131,6 +131,22 @@ class DMMetaManager(object):
             yield (subj_id, last_idx, subj_dat.loc[last_idx])
 
 
+    def get_subj_list(self, meta=False):
+        '''Get subject-level training data list
+        Returns:
+            A list of all subjects. Each element is a tuple of (subject ID, 
+            [ (exam Index, extracted exam info), ..., () ] ).
+        '''
+        subj_list = []
+        for subj_id, subj_dat in self.subj_generator():
+            subj_exam_list = []
+            for ex_idx in subj_dat.index.unique():  # uniq exam indices.
+                exam_info = self._get_info_per_exam(subj_dat.loc[ex_idx])
+                subj_exam_list.append( (ex_idx, exam_info) )
+            subj_list.append( (subj_id, subj_exam_list) )
+        return subj_list
+
+
     def get_flatten_exam_list(self, meta=False):
         '''Get exam-level training data list
         Returns:
