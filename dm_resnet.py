@@ -171,14 +171,70 @@ class ResNetBuilder(object):
     def build_resnet_152(input_shape, num_outputs):
         return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3])
 
+
+class DMResNetBuilder(object):
+    @staticmethod
+    def build(input_shape, num_outputs, block_fn, repetitions):
+        """
+        Builds a custom ResNet like architecture.
+        :param input_shape: Shall be the input shapes for both CC and MLO views.
+
+        :param num_outputs: The number of outputs at final softmax layer
+
+        :param block_fn: The block function to use. This is either :func:`basic_block` or :func:`bottleneck`.
+        The original paper used basic_block for layers < 50
+
+        :param repetitions: Number of repetitions of various block units.
+        At each block unit, the number of filters are doubled and the input size is halved
+
+        :return: The keras model.
+        """
+        if len(input_shape) != 3:
+            raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
+
+        # Permute dimension order if necessary
+        if K.image_dim_ordering() == 'tf':
+            input_shape = (input_shape[1], input_shape[2], input_shape[0])
+
+        # First, define a shared CNN model for both CC and MLO views.
+        img_input = Input(shape=input_shape)
+        conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2))(img_input)
+        pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode="same")(conv1)
+
+        block = pool1
+        nb_filters = 64
+        for i, r in enumerate(repetitions):
+            block = _residual_block(block_fn, nb_filters=nb_filters, 
+                                    repetitions=r, is_first_layer=i == 0)(block)
+            nb_filters *= 2
+
+        # Classifier block
+        pool2 = AveragePooling2D(pool_size=(block._keras_shape[ROW_AXIS],
+                                            block._keras_shape[COL_AXIS]),
+                                 strides=(1, 1))(block)
+        flatten1 = Flatten()(pool2)
+        shared_conv_model = Model(input=img_input, output=flatten1)
+
+        # Then merge the conv representations of the two views.
+        input_cc = Input(shape=input_shape)
+        input_mlo = Input(shape=input_shape)
+        flatten_cc = shared_conv_model(input_cc)
+        flatten_mlo = shared_conv_model(input_mlo)
+        merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
+        dense = Dense(output_dim=num_outputs, init="he_normal", 
+                      activation="softmax")(merged_repr)
+
+        discr_model = Model(input=[input_cc, input_mlo], output=dense)
+        return discr_model
+
     @staticmethod
     def build_dm_resnet_68(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
+        return DMResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
 
 
 def main():
-    model = ResNetBuilder.build_resnet_18((3, 224, 224), 1000)
-    model.compile(loss="categorical_crossentropy", optimizer="sgd")
+    model = DMResNetBuilder.build_dm_resnet_68((1, 1152, 896), 1)
+    model.compile(loss="binary_crossentropy", optimizer="sgd")
     model.summary()
 
 
