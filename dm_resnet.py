@@ -171,8 +171,14 @@ class ResNetBuilder(object):
     def build_resnet_152(input_shape, num_outputs):
         return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3])
 
+    @staticmethod
+    def build_dm_resnet_68(input_shape, num_outputs):
+        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
 
-class DMResNetBuilder(object):
+
+class DoubleInputsResNetBuilder(object):
+    '''Residual net with two inputs
+    '''
     @staticmethod
     def build(input_shape, num_outputs, block_fn, repetitions):
         """
@@ -229,11 +235,11 @@ class DMResNetBuilder(object):
 
     @staticmethod
     def build_dm_resnet_68(input_shape, num_outputs):
-        return DMResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
+        return DoubleInputsResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
 
 
 def main():
-    model = DMResNetBuilder.build_dm_resnet_68((1, 1152, 896), 1)
+    model = ResNetBuilder.build_dm_resnet_68((1, 1152, 896), 1)
     model.compile(loss="binary_crossentropy", optimizer="sgd")
     model.summary()
 
