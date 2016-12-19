@@ -10,7 +10,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
         batch_size=16, samples_per_epoch=160, nb_epoch=20, weight_decay=.0001,
         val_size=.2, lr_patience=5, net='resnet50', nb_worker=4,
         exam_tsv='./metadata/exams_metadata.tsv',
-        img_tsv='./metadata/images_crosswalk.tsv'):
+        img_tsv='./metadata/images_crosswalk.tsv',
+        trained_model='./modelState/dm_resnet_model.h5'):
 
     # Setup training and validation data.
     random_seed = os.getenv('RANDOM_SEED', 12345)
@@ -57,7 +58,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     sgd = SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss='binary_crossentropy', 
                   metrics=['accuracy', 'precision', 'recall'])
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=lr_patience)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
+                                  patience=lr_patience, verbose=1)
     model.fit_generator(train_generator, 
                         samples_per_epoch=samples_per_epoch, 
                         nb_epoch=nb_epoch, 
@@ -67,6 +69,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
                         nb_worker=nb_worker, 
                         pickle_safe=True  # turn on pickle_safe to avoid a strange error.
                         )
+    model.save(trained_model)
 
 
 if __name__ == '__main__':
@@ -91,6 +94,8 @@ if __name__ == '__main__':
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
+    parser.add_argument("--trained-model", "-m", dest="trained_model", type=str, 
+                        default="./modelState/dm_resnet_model.h5")
 
     args = parser.parse_args()
     run(args.img_folder, 
@@ -105,6 +110,8 @@ if __name__ == '__main__':
         net=args.net,
         nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
-        img_tsv=args.img_tsv)
+        img_tsv=args.img_tsv,
+        trained_model=args.trained_model
+        )
 
 
