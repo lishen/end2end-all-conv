@@ -14,6 +14,7 @@ from keras.layers.convolutional import (
     AveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
+from keras.regularizers import l2
 from keras import backend as K
 
 if K.image_dim_ordering() == 'tf':
@@ -27,10 +28,12 @@ else:
 
 
 # Helper to build a conv -> BN -> relu block
-def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1)):
+def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1), weight_decay=.0001):
     def f(input):
-        conv = Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, subsample=subsample,
-                             init="he_normal", border_mode="same")(input)
+        conv = Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, 
+                             subsample=subsample, init="he_normal", 
+                             border_mode="same", W_regularizer=l2(weight_decay), 
+                             b_regularizer=l2(weight_decay))(input)
         norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(conv)
         return Activation("relu")(norm)
 
@@ -39,18 +42,19 @@ def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1)):
 
 # Helper to build a BN -> relu -> conv block
 # This is an improved scheme proposed in http://arxiv.org/pdf/1603.05027v2.pdf
-def _bn_relu_conv(nb_filter, nb_row, nb_col, subsample=(1, 1)):
+def _bn_relu_conv(nb_filter, nb_row, nb_col, subsample=(1, 1), weight_decay=.0001):
     def f(input):
         norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(input)
         activation = Activation("relu")(norm)
         return Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, subsample=subsample,
-                             init="he_normal", border_mode="same")(activation)
+                             init="he_normal", border_mode="same", W_regularizer=l2(weight_decay), 
+                             b_regularizer=l2(weight_decay))(activation)
 
     return f
 
 
 # Adds a shortcut between input and residual block and merges them with "sum"
-def _shortcut(input, residual):
+def _shortcut(input, residual, weight_decay=.0001):
     # Expand channels of shortcut to match residual.
     # Stride appropriately to match residual (width, height)
     # Should be int if network architecture is correctly configured.
@@ -64,19 +68,22 @@ def _shortcut(input, residual):
         shortcut = Convolution2D(nb_filter=residual._keras_shape[CHANNEL_AXIS],
                                  nb_row=1, nb_col=1,
                                  subsample=(stride_width, stride_height),
-                                 init="he_normal", border_mode="valid")(input)
+                                 init="he_normal", border_mode="valid", 
+                                 W_regularizer=l2(weight_decay), 
+                                 b_regularizer=l2(weight_decay))(input)
 
     return merge([shortcut, residual], mode="sum")
 
 
 # Builds a residual block with repeating bottleneck blocks.
-def _residual_block(block_function, nb_filters, repetitions, is_first_layer=False):
+def _residual_block(block_function, nb_filters, repetitions, is_first_layer=False, **kw_args):
     def f(input):
         for i in range(repetitions):
             init_subsample = (1, 1)
             if i == 0 and not is_first_layer:
                 init_subsample = (2, 2)
-            input = block_function(nb_filters=nb_filters, init_subsample=init_subsample)(input)
+            input = block_function(nb_filters=nb_filters, 
+                                   init_subsample=init_subsample, **kw_args)(input)
         return input
 
     return f
@@ -85,11 +92,11 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
 # Basic 3 X 3 convolution blocks.
 # Use for resnet with layers <= 34
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
-def basic_block(nb_filters, init_subsample=(1, 1)):
+def basic_block(nb_filters, init_subsample=(1, 1), **kw_args):
     def f(input):
-        conv1 = _bn_relu_conv(nb_filters, 3, 3, subsample=init_subsample)(input)
-        residual = _bn_relu_conv(nb_filters, 3, 3)(conv1)
-        return _shortcut(input, residual)
+        conv1 = _bn_relu_conv(nb_filters, 3, 3, subsample=init_subsample, **kw_args)(input)
+        residual = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv1)
+        return _shortcut(input, residual, **kw_args)
 
     return f
 
@@ -97,19 +104,19 @@ def basic_block(nb_filters, init_subsample=(1, 1)):
 # Bottleneck architecture for > 34 layer resnet.
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
-def bottleneck(nb_filters, init_subsample=(1, 1)):
+def bottleneck(nb_filters, init_subsample=(1, 1), **kw_args):
     def f(input):
-        conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, subsample=init_subsample)(input)
-        conv_3_3 = _bn_relu_conv(nb_filters, 3, 3)(conv_1_1)
-        residual = _bn_relu_conv(nb_filters * 4, 1, 1)(conv_3_3)
-        return _shortcut(input, residual)
+        conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, subsample=init_subsample, **kw_args)(input)
+        conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
+        residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
+        return _shortcut(input, residual, **kw_args)
 
     return f
 
 
 class ResNetBuilder(object):
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions):
+    def build(input_shape, num_outputs, block_fn, repetitions, weight_decay=.0001):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: The input shape in the form (nb_channels, nb_rows, nb_cols)
@@ -132,13 +139,15 @@ class ResNetBuilder(object):
             input_shape = (input_shape[1], input_shape[2], input_shape[0])
 
         input = Input(shape=input_shape)
-        conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2))(input)
+        conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2), 
+                              weight_decay=weight_decay)(input)
         pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode="same")(conv1)
 
         block = pool1
         nb_filters = 64
         for i, r in enumerate(repetitions):
-            block = _residual_block(block_fn, nb_filters=nb_filters, repetitions=r, is_first_layer=i == 0)(block)
+            block = _residual_block(block_fn, nb_filters=nb_filters, repetitions=r, 
+                                    is_first_layer=i == 0, weight_decay=weight_decay)(block)
             nb_filters *= 2
 
         # Classifier block
@@ -146,7 +155,9 @@ class ResNetBuilder(object):
                                             block._keras_shape[COL_AXIS]),
                                  strides=(1, 1))(block)
         flatten1 = Flatten()(pool2)
-        dense = Dense(output_dim=num_outputs, init="he_normal", activation="softmax")(flatten1)
+        dense = Dense(output_dim=num_outputs, init="he_normal", 
+                      activation="softmax", W_regularizer=l2(weight_decay), 
+                      b_regularizer=l2(weight_decay))(flatten1)
 
         model = Model(input=input, output=dense)
         return model
@@ -172,8 +183,16 @@ class ResNetBuilder(object):
         return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3])
 
     @staticmethod
-    def build_dm_resnet_68(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
+    def build_dm_resnet_68(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3], 
+            weight_decay=weight_decay)
+
+    @staticmethod
+    def build_dm_resnet_59(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3], 
+            weight_decay=weight_decay)
 
 
 class DoubleInputsResNetBuilder(object):
