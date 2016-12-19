@@ -1,5 +1,5 @@
 from sklearn.cross_validation import train_test_split
-from keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from keras.optimizers import SGD
 import os, argparse
 from meta import UNIMAGED_INT, DMMetaManager
@@ -8,7 +8,7 @@ from dm_resnet import ResNetBuilder
 
 def run(img_folder, img_extension='png', img_size=[288, 224], 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, weight_decay=.0001,
-        val_size=.2, lr_patience=5, net='resnet50', nb_worker=4,
+        val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         trained_model='./modelState/dm_resnet_model.h5'):
@@ -60,12 +60,13 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
                   metrics=['accuracy', 'precision', 'recall'])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
     model.fit_generator(train_generator, 
                         samples_per_epoch=samples_per_epoch, 
                         nb_epoch=nb_epoch, 
                         validation_data=val_generator, 
                         nb_val_samples=len(img_val), 
-                        callbacks=[reduce_lr], 
+                        callbacks=[reduce_lr, early_stopping], 
                         nb_worker=nb_worker, 
                         pickle_safe=True  # turn on pickle_safe to avoid a strange error.
                         )
@@ -88,6 +89,7 @@ if __name__ == '__main__':
                         type=float, default=.0001)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=5)
+    parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
     parser.add_argument("--net", dest="net", type=str, default="resnet50")
     parser.add_argument("--nb-worker", "-nw", dest="nb_worker", type=int, default=4)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
@@ -107,6 +109,7 @@ if __name__ == '__main__':
         weight_decay=args.weight_decay,
         val_size=args.val_size, 
         lr_patience=args.lr_patience, 
+        es_patience=args.es_patience,
         net=args.net,
         nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
