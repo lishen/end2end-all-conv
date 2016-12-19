@@ -163,24 +163,34 @@ class ResNetBuilder(object):
         return model
 
     @staticmethod
-    def build_resnet_18(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, basic_block, [2, 2, 2, 2])
+    def build_resnet_18(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, basic_block, [2, 2, 2, 2], 
+            weight_decay=weight_decay)
 
     @staticmethod
-    def build_resnet_34(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, basic_block, [3, 4, 6, 3])
+    def build_resnet_34(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, basic_block, [3, 4, 6, 3], 
+            weight_decay=weight_decay)
 
     @staticmethod
-    def build_resnet_50(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 6, 3])
+    def build_resnet_50(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
+            weight_decay=weight_decay)
 
     @staticmethod
-    def build_resnet_101(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 4, 23, 3])
+    def build_resnet_101(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, bottleneck, [3, 4, 23, 3], 
+            weight_decay=weight_decay)
 
     @staticmethod
-    def build_resnet_152(input_shape, num_outputs):
-        return ResNetBuilder.build(input_shape, num_outputs, bottleneck, [3, 8, 36, 3])
+    def build_resnet_152(input_shape, num_outputs, weight_decay=.0001):
+        return ResNetBuilder.build(
+            input_shape, num_outputs, bottleneck, [3, 8, 36, 3], 
+            weight_decay=weight_decay)
 
     @staticmethod
     def build_dm_resnet_68(input_shape, num_outputs, weight_decay=.0001):
