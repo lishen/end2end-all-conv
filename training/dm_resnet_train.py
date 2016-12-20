@@ -1,4 +1,4 @@
-from sklearn.cross_validation import train_test_split
+from sklearn.model_selection import train_test_split
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from keras.optimizers import SGD
 import os, argparse
