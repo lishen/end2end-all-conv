@@ -64,10 +64,11 @@ WORKDIR build
 RUN cmake -D CMAKE_BUILD_TYPE=Release \
     -D CMAKE_INSTALL_PREFIX=/usr/local \
     -D WITH_TBB=ON -D WITH_V4L=ON -D WITH_QT=ON -D WITH_OPENGL=ON -D WITH_GSTREAMER=OFF \
-    -D CUDA_NVCC_FLAGS="-D_FORCE_INLINES" \
-    -D WITH_TIFF=ON BUILD_TIFF=ON \
+    -D WITH_TIFF=ON -D BUILD_TIFF=ON \
     -D WITH_OPENMP=ON \
     -D BUILD_EXAMPLES=OFF \
+    -D CUDA_NVCC_FLAGS="-D_FORCE_INLINES" \
+    # -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
     # -D PYTHON2_EXECUTABLE=/anaconda/bin/python \
     # -D PYTHON_INCLUDE_DIR=/anaconda/include/python2.7/ \
     # -D PYTHON_LIBRARY=/anaconda/lib/libpython2.7.so \
