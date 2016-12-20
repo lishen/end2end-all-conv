@@ -116,7 +116,7 @@ if __name__ == '__main__':
                         default="./modelState/dm_resnet_model.h5")
 
     args = parser.parse_args()
-    run(args.img_folder, 
+    run_opts = dict(
         img_extension=args.img_extension, 
         img_size=args.img_size, 
         batch_size=args.batch_size, 
@@ -130,7 +130,9 @@ if __name__ == '__main__':
         nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
-        trained_model=args.trained_model
+        trained_model=args.trained_model        
         )
+    print "\n>>> Model training options: <<<\n", run_opts, "\n"
+    run(args.img_folder, **run_opts)
 
 
