@@ -2,6 +2,7 @@ from sklearn.cross_validation import train_test_split
 from keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from keras.optimizers import SGD
 import os, argparse
+import numpy as np
 from meta import UNIMAGED_INT, DMMetaManager
 from dm_image import DMImageDataGenerator
 from dm_resnet import ResNetBuilder
@@ -61,16 +62,31 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
-    model.fit_generator(train_generator, 
-                        samples_per_epoch=samples_per_epoch, 
-                        nb_epoch=nb_epoch, 
-                        validation_data=val_generator, 
-                        nb_val_samples=len(img_val), 
-                        callbacks=[reduce_lr, early_stopping], 
-                        nb_worker=nb_worker, 
-                        pickle_safe=True  # turn on pickle_safe to avoid a strange error.
-                        )
+    hist = model.fit_generator(
+        train_generator, 
+        samples_per_epoch=samples_per_epoch, 
+        nb_epoch=nb_epoch, 
+        validation_data=val_generator, 
+        nb_val_samples=len(img_val), 
+        callbacks=[reduce_lr, early_stopping], 
+        nb_worker=nb_worker, 
+        pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
+        verbose=2
+        )
+    min_loss_locs, = np.where(hist.history['val_loss'] == min(hist.history['val_loss']))
+    best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
+    best_val_acc = hist.history['val_acc'][min_loss_locs[0]]
+    best_val_precision = hist.history['val_precision'][min_loss_locs[0]]
+    best_val_recall = hist.history['val_recall'][min_loss_locs[0]]
+    print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
+    print "Best val loss:", best_val_loss
+    print "Best val accuracy:", best_val_acc
+    print "Best val precision:", best_val_precision
+    print "Best val recall:", best_val_recall
+    
     model.save(trained_model)
+
+    return hist
 
 
 if __name__ == '__main__':
