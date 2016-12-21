@@ -68,12 +68,12 @@ RUN cmake -D CMAKE_BUILD_TYPE=Release \
     -D WITH_OPENMP=ON \
     -D BUILD_EXAMPLES=OFF \
     -D CUDA_NVCC_FLAGS="-D_FORCE_INLINES" \
+    ..
     # -D CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
     # -D PYTHON2_EXECUTABLE=/anaconda/bin/python \
     # -D PYTHON_INCLUDE_DIR=/anaconda/include/python2.7/ \
     # -D PYTHON_LIBRARY=/anaconda/lib/libpython2.7.so \
     # -D PYTHON2_NUMPY_INCLUDE_DIRS=/anaconda/lib/python2.7/site-packages/numpy/core/include/ \
-    ..
 
 # make and install.
 RUN make clean && make -j7 && make install
@@ -85,7 +85,7 @@ RUN python -c "import cv2; print cv2.__version__"
 
 
 # ============================================== #
-RUN apt-get install -y parallel imagemagick
+RUN apt-get -y update && apt-get install -y parallel imagemagick
 
 
 # ============================================== #
@@ -93,7 +93,7 @@ RUN apt-get install -y parallel imagemagick
 WORKDIR /
 COPY preprocess.py ./
 COPY preprocess.sh ./
-COPY train.sh ./
+# COPY train.sh ./
 
 
 
