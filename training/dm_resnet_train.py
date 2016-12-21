@@ -1,5 +1,9 @@
 from sklearn.model_selection import train_test_split
-from keras.callbacks import ReduceLROnPlateau, EarlyStopping
+from keras.callbacks import (
+    ReduceLROnPlateau, 
+    EarlyStopping, 
+    ModelCheckpoint
+)
 from keras.optimizers import SGD
 import os, argparse
 import numpy as np
@@ -13,7 +17,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
-        trained_model='./modelState/dm_resnet_model.h5'):
+        best_model='./modelState/dm_resnet_best_model.h5',
+        final_model='./modelState/dm_resnet_final_model.h5'):
 
     # Setup training and validation data.
     random_seed = os.getenv('RANDOM_SEED', 12345)
@@ -66,17 +71,21 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
+    checkpointer = ModelCheckpoint(
+        best_model, monitor='val_loss', verbose=1, save_best_only=True)
     hist = model.fit_generator(
         train_generator, 
         samples_per_epoch=samples_per_epoch, 
         nb_epoch=nb_epoch, 
         validation_data=val_generator, 
         nb_val_samples=len(img_val), 
-        callbacks=[reduce_lr, early_stopping], 
+        callbacks=[reduce_lr, early_stopping, checkpointer], 
         nb_worker=nb_worker, 
         pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
         verbose=2
         )
+
+    # Training report.
     min_loss_locs, = np.where(hist.history['val_loss'] == min(hist.history['val_loss']))
     best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
     best_val_acc = hist.history['val_acc'][min_loss_locs[0]]
@@ -88,7 +97,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     print "Best val precision:", best_val_precision
     print "Best val recall:", best_val_recall
     
-    model.save(trained_model)
+    model.save(final_model)
 
     return hist
 
@@ -117,8 +126,10 @@ if __name__ == '__main__':
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
-    parser.add_argument("--trained-model", "-m", dest="trained_model", type=str, 
-                        default="./modelState/dm_resnet_model.h5")
+    parser.add_argument("--best-model", "-bm", dest="best_model", type=str, 
+                        default="./modelState/dm_resnet_best_model.h5")
+    parser.add_argument("--final-model", "-fm", dest="final_model", type=str, 
+                        default="./modelState/dm_resnet_final_model.h5")
 
     args = parser.parse_args()
     run_opts = dict(
@@ -136,8 +147,9 @@ if __name__ == '__main__':
         nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
-        trained_model=args.trained_model        
-        )
+        best_model=args.best_model,        
+        final_model=args.final_model        
+    )
     print "\n>>> Model training options: <<<\n", run_opts, "\n"
     run(args.img_folder, **run_opts)
 
