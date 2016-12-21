@@ -8,7 +8,8 @@ from dm_image import DMImageDataGenerator
 from dm_resnet import ResNetBuilder
 
 def run(img_folder, img_extension='png', img_size=[288, 224], 
-        batch_size=16, samples_per_epoch=160, nb_epoch=20, weight_decay=.0001,
+        batch_size=16, samples_per_epoch=160, nb_epoch=20, 
+        balance_classes=.0, weight_decay=.0001,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
@@ -28,10 +29,10 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
         vertical_flip=True)
     train_generator = img_gen.flow_from_img_list(
         img_train, lab_train, target_size=(img_size[0], img_size[1]), 
-        batch_size=batch_size, seed=random_seed)
+        batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
     val_generator = img_gen.flow_from_img_list(
         img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-        batch_size=batch_size, seed=random_seed)
+        batch_size=batch_size, balance_classes=False, seed=random_seed)
 
     # Model training.
     if net == 'resnet18':
@@ -101,6 +102,7 @@ if __name__ == '__main__':
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
+    parser.add_argument("--balance-classes", "-bc", dest="balance_classes", type=float, default=.0)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", 
                         type=float, default=.0001)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
@@ -122,6 +124,7 @@ if __name__ == '__main__':
         batch_size=args.batch_size, 
         samples_per_epoch=args.samples_per_epoch, 
         nb_epoch=args.nb_epoch, 
+        balance_classes=args.balance_classes,
         weight_decay=args.weight_decay,
         val_size=args.val_size, 
         lr_patience=args.lr_patience, 

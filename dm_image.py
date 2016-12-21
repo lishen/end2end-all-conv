@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.random import RandomState
+from numpy.random import RandomState, choice
 from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import keras.backend as K
@@ -12,12 +12,17 @@ class DMImgListIterator(Iterator):
 
     def __init__(self, img_list, lab_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary',
+                 class_mode='binary', balance_classes=False,
                  batch_size=32, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         '''DM image iterator
         Args:
-            target_size (tuple of int): (width, height).
+            target_size ([tuple of int]): (height, width).
+            balance_classes ([bool or float]): Control class balance. When False 
+                    or .0, no balancing is performed. When a float, it gives the 
+                    ratio of negatives vs. positives. E.g., when balance_classes=2.0,
+                    the image iterator will generate two times more negatives than 
+                    positives. 
         '''
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
@@ -35,6 +40,7 @@ class DMImgListIterator(Iterator):
                              '; expected one of "categorical", '
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
+        self.balance_classes = balance_classes
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
@@ -54,28 +60,48 @@ class DMImgListIterator(Iterator):
     def next(self):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
+        if self.balance_classes:
+            ratio = float(self.balance_classes)  # neg vs. pos.
+            classes = self.classes[index_array]
+            pos_weight = len(classes) / (np.sum(classes==1) + 1e-7)
+            neg_weight = len(classes) / (np.sum(classes==0) + 1e-7)
+            neg_weight *= ratio
+            probs = np.zeros(current_batch_size)
+            probs[classes==1] = pos_weight
+            probs[classes==0] = neg_weight
+            probs /= probs.sum()
+            index_array = choice(index_array, current_batch_size, p=probs)
+            index_array.sort()  # can avoid repeated img reading.
         # The transformation of images is not under thread lock so it can be done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape, dtype='float32')
         # build batch of image data
+        last_fname = None
         for i, j in enumerate(index_array):
             fname = self.filenames[j]
-            if self.gs_255:
-                img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
+            if fname == last_fname:
+                batch_x[i] = batch_x[i - 1]  # just copy, no reading.
             else:
-                img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
-            if self.target_size != img.shape:
-                img = cv2.resize(
-                    img, dsize=(self.target_size[1], self.target_size[0]), 
-                    interpolation=cv2.INTER_CUBIC)
-            img = img.astype('float32')
-            # Always have one channel.
-            if self.dim_ordering == 'th':
-                x = img.reshape((1, img.shape[0], img.shape[1]))
-            else:
-                x = img.reshape((img.shape[0], img.shape[1], 1))
+                last_fname = fname
+                if self.gs_255:
+                    img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
+                else:
+                    img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
+                if self.target_size != img.shape:
+                    img = cv2.resize(
+                        img, dsize=(self.target_size[1], self.target_size[0]), 
+                        interpolation=cv2.INTER_CUBIC)
+                img = img.astype('float32')
+                # Always have one channel.
+                if self.dim_ordering == 'th':
+                    x = img.reshape((1, img.shape[0], img.shape[1]))
+                else:
+                    x = img.reshape((img.shape[0], img.shape[1], 1))
+                batch_x[i] = x
+        for i, x in enumerate(batch_x):
             x = self.image_data_generator.random_transform(x)
             x = self.image_data_generator.standardize(x)
             batch_x[i] = x
+        
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
             for i in range(current_batch_size):
@@ -89,6 +115,7 @@ class DMImgListIterator(Iterator):
                 else:
                     img = img.reshape((img.shape[0], img.shape[1]))
                 cv2.imwrite(path.join(self.save_to_dir, fname), img)
+        
         # build batch of labels
         if self.class_mode == 'sparse':
             batch_y = self.classes[index_array]
@@ -307,12 +334,12 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_img_list(self, img_list, lab_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           batch_size=32, shuffle=True, seed=None,
+                           balance_classes=False, batch_size=32, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMImgListIterator(
             img_list, lab_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
-            dim_ordering=self.dim_ordering,
+            balance_classes=balance_classes, dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
 
