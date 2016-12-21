@@ -22,17 +22,20 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     img_list, lab_list = meta_man.get_flatten_img_list()
     img_train, img_val, lab_train, lab_val = train_test_split(
         img_list, lab_list, test_size=val_size, random_state=random_seed, stratify=lab_list)
-    img_gen = DMImageDataGenerator(
+    train_img_gen = DMImageDataGenerator(
         samplewise_center=True, 
         samplewise_std_normalization=True, 
         horizontal_flip=True, 
         vertical_flip=True)
-    train_generator = img_gen.flow_from_img_list(
+    val_img_gen = DMImageDataGenerator(
+        samplewise_center=True, 
+        samplewise_std_normalization=True)
+    train_generator = train_img_gen.flow_from_img_list(
         img_train, lab_train, target_size=(img_size[0], img_size[1]), 
         batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
-    val_generator = img_gen.flow_from_img_list(
+    val_generator = val_img_gen.flow_from_img_list(
         img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-        batch_size=batch_size, balance_classes=False, seed=random_seed)
+        batch_size=batch_size, balance_classes=False, shuffle=False)
 
     # Model training.
     if net == 'resnet18':
