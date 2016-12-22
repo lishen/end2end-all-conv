@@ -1,39 +1,44 @@
 import pandas as pd
+import numpy as np
 from os import path
 
-UNIMAGED_INT = -99  # A global definition for the int represention for unimaged breast.
 
 class DMMetaManager(object):
     '''Class for reading meta data and feeding them to training
     '''
 
-    def __init__(self, exam_tsv='/metadata/exams_metadata.tsv', 
-                 img_tsv='/metadata/images_crosswalk.tsv', 
-                 img_folder='/trainingData', 
+    def __init__(self, 
+                 img_tsv='./metadata/images_crosswalk.tsv', 
+                 exam_tsv=None, 
+                 img_folder='./trainingData', 
                  img_extension='dcm'):
         '''Constructor for DMMetaManager
         Args:
-            exam_tsv ([str]): path to the exam meta .tsv file. Default is set 
-                    to the default location when run in a docker container.
-            img_tsv ([str]): path to the image meta .tsv file. Default is set 
-                    to the default location when run in a docker container.
+            img_tsv ([str]): path to the image meta .tsv file. 
+            exam_tsv ([str]): path to the exam meta .tsv file. Default is None
+                    because this file is not available to SC1. 
             img_folder ([str]): path to the folder where the images are stored.
-                    Default is set to the default location when run in a docker 
-                    container.
             img_extension ([str]): image file extension. Default is 'dcm'.
         '''
-        exam_df = pd.read_csv(exam_tsv, sep="\t")
-        img_df = pd.read_csv(img_tsv, sep="\t")
-        exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
-        img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
-        self.exam_img_df = exam_df_indexed.join(img_df_indexed)
+
         def mod_file_path(name):
             '''Change file name extension and append folder path.
             '''
             return path.join(img_folder, 
                              path.splitext(name)[0] + '.' + img_extension)
-        self.exam_img_df['filename'] = \
-            self.exam_img_df['filename'].apply(mod_file_path)
+
+        img_df = pd.read_csv(img_tsv, sep="\t")
+        img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
+        if exam_tsv is not None:
+            exam_df = pd.read_csv(exam_tsv, sep="\t")
+            exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
+            self.exam_img_df = exam_df_indexed.join(img_df_indexed)
+            self.exam_img_df['filename'] = \
+                self.exam_img_df['filename'].apply(mod_file_path)
+        else:
+            img_df_indexed['filename'] = \
+                img_df_indexed['filename'].apply(mod_file_path)
+            self.img_df_indexed = img_df_indexed
 
 
     def get_flatten_img_list(self, meta=False):
@@ -44,17 +49,28 @@ class DMMetaManager(object):
         '''
         img = []
         lab = []
-        for idx, dat in self.exam_img_df.iterrows():
-            img_name = dat['filename']
-            laterality = dat['laterality']
-            cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
-            # cancer = 0 if cancer == '.' else int(cancer)
-            # No need to worry about the rows where cancer='.' because the 
-            # filenames must correspond to the other breast. The labels of 
-            # '.' will not appear in the training data.
-            cancer = int(cancer)
-            img.append(img_name)
-            lab.append(cancer)
+        try:
+            for idx, dat in self.exam_img_df.iterrows():
+                img_name = dat['filename']
+                laterality = dat['laterality']
+                cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
+                # No need to worry about the rows where cancer='.' because the 
+                # labels of '.' will not appear in the image list.
+                # For example, if cancerL = '.', laterality must be 'R' and 
+                # cancerR can't be '.', and vice versa.
+                cancer = int(cancer) if cancer != '*' else np.nan
+                img.append(img_name)
+                lab.append(cancer)
+        except AttributeError:
+            for idx, dat in self.img_df_indexed.iterrows():
+                img_name = dat['filename']
+                try:
+                    cancer = int(dat['cancer'])
+                except KeyError:
+                    cancer = np.nan
+                img.append(img_name)
+                lab.append(cancer)
+
         return (img, lab)
 
 
@@ -70,30 +86,69 @@ class DMMetaManager(object):
             In current implementation, only CC and MLO views are included. 
             All other meta info are not included.
         '''
+
         info = {'L': {}, 'R': {}}
-        cancerL = exam['cancerL'].iloc[0]
-        cancerL = int(cancerL) if cancerL != '.' else UNIMAGED_INT
-        cancerR = exam['cancerR'].iloc[0]
-        cancerR = int(cancerR) if cancerR != '.' else UNIMAGED_INT
+        exam_indexed = exam.set_index(['laterality', 'view', 'imageIndex'])
+        # Determine cancer status.
+        try:
+            cancerL = exam_indexed['cancerL'].iloc[0]
+            cancerR = exam_indexed['cancerR'].iloc[0]
+            cancerL = np.nan if cancerL == '.' or cancerL == '*' else int(cancerL)
+            cancerR = np.nan if cancerR == '.' or cancerR == '*' else int(cancerR)
+        except KeyError:
+            try:
+                cancerL = int(exam_indexed.loc['L']['cancer'].iloc[0])
+            except KeyError:
+                cancerL = np.nan
+            try:
+                cancerR = int(exam_indexed.loc['R']['cancer'].iloc[0])
+            except KeyError:
+                cancerR = np.nan
         info['L']['cancer'] = cancerL
         info['R']['cancer'] = cancerR
-        exam_indexed = exam.set_index(['laterality', 'view', 'imageIndex'])
-        try:
-            info['L']['CC'] = exam_indexed.loc['L'].loc['CC'][['filename']]
-        except KeyError:
-            info['L']['CC'] = None
-        try:
-            info['R']['CC'] = exam_indexed.loc['R'].loc['CC'][['filename']]
-        except KeyError:
-            info['R']['CC'] = None
-        try:
-            info['L']['MLO'] = exam_indexed.loc['L'].loc['MLO'][['filename']]
-        except KeyError:
-            info['L']['MLO'] = None
-        try:
-            info['R']['MLO'] = exam_indexed.loc['R'].loc['MLO'][['filename']]
-        except KeyError:
-            info['R']['MLO'] = None
+        # Obtain file names for different views.
+        def view_fnames(exam_df, breast, view_list):
+            '''Obtain the file names for a view list for a breast
+            Returns:
+                a DataFrame object contains the file names.
+            '''
+            df_list = []
+            for view in view_list:
+                try:
+                    df_list.append(exam_df.loc[breast].loc[view][['filename']])
+                except KeyError:
+                    df_list.append(None)
+            try:
+                return pd.concat(df_list)
+            except ValueError:
+                return None
+
+        # View      Description
+        # *Undetermined yet.
+        # AT        axillary tail  *
+        # CC        craniocaudal
+        # CCID      craniocaudal (implant displaced)
+        # CV        cleavage  *
+        # FB        from below
+        # LM        90 lateromedial
+        # LMO       lateromedial oblique
+        # ML        90 mediolateral
+        # MLID      90 mediolateral (implant displaced)
+        # MLO       mediolateral oblique
+        # MLOID     mediolateral oblique (implant displaced)
+        # RL        rolled lateral  *
+        # RM        rolled medial  *
+        # SIO       superior inferior oblique
+        # XCCL      exaggerated craniocaudal lateral
+        # XCCM      exaggerated craniocaudal medial
+
+        cc_like_list = ['CC', 'CCID', 'FB', 'LM', 'ML', 'MLID', 'XCCL', 'XCCM']
+        mlo_like_list = ['MLO', 'LMO', 'MLOID', 'SIO']
+        info['L']['CC'] = view_fnames(exam_indexed, 'L', cc_like_list)
+        info['R']['CC'] = view_fnames(exam_indexed, 'R', cc_like_list)
+        info['L']['MLO'] = view_fnames(exam_indexed, 'L', mlo_like_list)
+        info['R']['MLO'] = view_fnames(exam_indexed, 'R', mlo_like_list)
+
         return info
 
 
@@ -102,9 +157,13 @@ class DMMetaManager(object):
         Returns:
             A tuple of (subject ID, the corresponding records of the subject).
         '''
-        subj_list = self.exam_img_df.index.levels[0]
+        try:
+            df = self.exam_img_df
+        except AttributeError:
+            df = self.img_df_indexed
+        subj_list = df.index.levels[0]
         for subj_id in subj_list:
-            yield (subj_id, self.exam_img_df.loc[subj_id])
+            yield (subj_id, df.loc[subj_id])
 
 
     def exam_generator(self):

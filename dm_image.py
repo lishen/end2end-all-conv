@@ -4,7 +4,6 @@ from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import keras.backend as K
 import cv2
-from meta import UNIMAGED_INT
 
 
 def index_balancer(index_array, classes, ratio):
@@ -181,11 +180,13 @@ class DMExamListIterator(Iterator):
         print('For left breasts, normal=%d, cancer=%d, unimaged=%d.' % 
             (np.sum(self.classes[:, 0] == 0), 
              np.sum(self.classes[:, 0] == 1), 
-             np.sum(self.classes[:, 0] == UNIMAGED_INT)))
+             np.sum(np.isnan(self.classes[:, 0])))
+            )
         print('For right breasts, normal=%d, cancer=%d, unimaged=%d.' % 
             (np.sum(self.classes[:, 1] == 0), 
              np.sum(self.classes[:, 1] == 1), 
-             np.sum(self.classes[:, 1] == UNIMAGED_INT)))
+             np.sum(np.isnan(self.classes[:, 1])))
+            )
 
         super(DMExamListIterator, self).__init__(
             self.nb_exam, batch_size, shuffle, seed)
@@ -204,7 +205,7 @@ class DMExamListIterator(Iterator):
             index_array = index_balancer(index_array, classes_, ratio)
 
         # The transformation of images is not under thread lock so it can be done in parallel
-        nb_unimaged = np.sum(self.classes[index_array, :] == UNIMAGED_INT)
+        nb_unimaged = np.sum(np.isnan(self.classes[index_array, :]))
         # batch size measures the number of exams, an exam has two breasts.
         current_batch_size = current_batch_size*2 - nb_unimaged
         batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
@@ -262,12 +263,12 @@ class DMExamListIterator(Iterator):
             else:
                 last_eidx = eidx
                 exam_dat = self.exam_list[eidx][2]
-                if not self.classes[eidx, 0] == UNIMAGED_INT:
+                if not np.isnan(self.classes[eidx, 0]):
                     img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
                     batch_x_cc[adv] = img_cc
                     batch_x_mlo[adv] = img_mlo
                     adv += 1
-                if not self.classes[eidx, 1] == UNIMAGED_INT:
+                if not np.isnan(self.classes[eidx, 1]):
                     img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
                     batch_x_cc[adv] = img_cc
                     batch_x_mlo[adv] = img_mlo
@@ -300,7 +301,7 @@ class DMExamListIterator(Iterator):
         
         # build batch of labels
         flat_classes = self.classes[index_array, :].ravel()  # [L, R, L, R, ...]
-        flat_classes = flat_classes[flat_classes != UNIMAGED_INT]
+        flat_classes = flat_classes[np.logical_not(np.isnan(flat_classes))]
         if self.class_mode == 'sparse':
             batch_y = flat_classes
         elif self.class_mode == 'binary':
