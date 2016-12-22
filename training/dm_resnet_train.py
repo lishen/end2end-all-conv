@@ -7,7 +7,7 @@ from keras.callbacks import (
 from keras.optimizers import SGD
 import os, argparse
 import numpy as np
-from meta import UNIMAGED_INT, DMMetaManager
+from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
 from dm_resnet import ResNetBuilder
 
