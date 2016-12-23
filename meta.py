@@ -28,7 +28,10 @@ class DMMetaManager(object):
                              path.splitext(name)[0] + '.' + img_extension)
 
         img_df = pd.read_csv(img_tsv, sep="\t")
-        img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
+        try:
+            img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
+        except KeyError:
+            img_df_indexed = img_df.set_index(['subjectId'])
         if exam_tsv is not None:
             exam_df = pd.read_csv(exam_tsv, sep="\t")
             exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
@@ -161,7 +164,10 @@ class DMMetaManager(object):
             df = self.exam_img_df
         except AttributeError:
             df = self.img_df_indexed
-        subj_list = df.index.levels[0]
+        try:
+            subj_list = df.index.levels[0]
+        except AttributeError:
+            subj_list = df.index.unique()
         for subj_id in subj_list:
             yield (subj_id, df.loc[subj_id])
 
@@ -172,7 +178,8 @@ class DMMetaManager(object):
             A tuple of (subject ID, exam Index, the corresponding records of 
             the exam).
         Notes:
-            All exams are flattened.
+            All exams are flattened. When examIndex is unavailable, the 
+            returned exam index is equal to the subject ID.
         '''
         for subj_id, subj_dat in self.subj_generator():
             for ex_idx in subj_dat.index.unique():
@@ -184,6 +191,9 @@ class DMMetaManager(object):
         Returns:
             A tuple of (subject ID, exam Index, the corresponding records of 
             the exam).
+        Notes:
+            When examIndex is unavailable, the returned exam index is equal to 
+            the subject ID.
         '''
         for subj_id, subj_dat in self.subj_generator():
             last_idx = subj_dat.index.max()
