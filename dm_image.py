@@ -4,6 +4,7 @@ from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import keras.backend as K
 import cv2
+import dicom
 
 
 def index_balancer(index_array, classes, ratio):
@@ -20,6 +21,24 @@ def index_balancer(index_array, classes, ratio):
     index_array = choice(index_array, current_batch_size, p=probs)
     index_array.sort()  # can avoid repeated img reading.
     return index_array
+
+
+def read_resize_img(fname, target_size, gs_255=False):
+    '''Read an image (.png, .jpg, .dcm) and resize it to target size.
+    '''
+    if path.splitext(fname)[1] == '.dcm':
+        img = dicom.read_file(fname).pixel_array
+    else:
+        if gs_255:
+            img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
+        else:
+            img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
+    if target_size != img.shape:
+        img = cv2.resize(
+            img, dsize=(target_size[1], target_size[0]), 
+            interpolation=cv2.INTER_CUBIC)
+    img = img.astype('float32')
+    return img
 
 
 class DMImgListIterator(Iterator):
@@ -90,15 +109,7 @@ class DMImgListIterator(Iterator):
                 batch_x[i] = batch_x[i-1]  # just copy, no reading.
             else:
                 last_fname = fname
-                if self.gs_255:
-                    img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
-                else:
-                    img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
-                if self.target_size != img.shape:
-                    img = cv2.resize(
-                        img, dsize=(self.target_size[1], self.target_size[0]), 
-                        interpolation=cv2.INTER_CUBIC)
-                img = img.astype('float32')
+                img = read_resize_img(fname, self.target_size, self.gs_255)
                 # Always have one channel.
                 if self.dim_ordering == 'th':
                     x = img.reshape((1, img.shape[0], img.shape[1]))
@@ -215,15 +226,8 @@ class DMExamListIterator(Iterator):
             '''Randomly read an image when there is repeated imaging
             '''
             fname = img_df['filename'].sample(1, random_state=current_batch_rs).iloc[0]
-            if self.gs_255:
-                img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
-            else:
-                img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
-            if self.target_size != img.shape:
-                img = cv2.resize(
-                    img, dsize=(self.target_size[1], self.target_size[0]), 
-                    interpolation=cv2.INTER_CUBIC)
-            return img.astype('float32')
+            img = read_resize_img(fname, self.target_size, self.gs_255)
+            return img
 
         def read_breast_imgs(breast_dat):
             '''Read the images for both views for a breast
