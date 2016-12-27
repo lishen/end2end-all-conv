@@ -122,23 +122,11 @@ def bottleneck(nb_filters, init_subsample=(1, 1), **kw_args):
 
 
 class ResNetBuilder(object):
+
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions, 
-              weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
-        """
-        Builds a custom ResNet like architecture.
-        :param input_shape: The input shape in the form (nb_channels, nb_rows, nb_cols)
+    def _shared_conv_layers(input_shape, block_fn, repetitions, 
+                            weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
 
-        :param num_outputs: The number of outputs at final softmax layer
-
-        :param block_fn: The block function to use. This is either :func:`basic_block` or :func:`bottleneck`.
-        The original paper used basic_block for layers < 50
-
-        :param repetitions: Number of repetitions of various block units.
-        At each block unit, the number of filters are doubled and the input size is halved
-
-        :return: The keras model.
-        """
         if len(input_shape) != 3:
             raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
 
@@ -167,75 +155,101 @@ class ResNetBuilder(object):
                                  strides=(1, 1))(block)
         # pool2 = Dropout(hidden_dropout)(pool2)
         flatten1 = Flatten()(pool2)
+
+        return input, flatten1
+
+
+    @staticmethod
+    def build(input_shape, num_outputs, block_fn, repetitions, 
+              weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
+        """
+        Builds a custom ResNet like architecture.
+        :param input_shape: The input shape in the form (nb_channels, nb_rows, nb_cols)
+
+        :param num_outputs: The number of outputs at final softmax layer
+
+        :param block_fn: The block function to use. This is either :func:`basic_block` or :func:`bottleneck`.
+        The original paper used basic_block for layers < 50
+
+        :param repetitions: Number of repetitions of various block units.
+        At each block unit, the number of filters are doubled and the input size is halved
+
+        :return: The keras model.
+        """
+
+        input, flatten_out = ResNetBuilder._shared_conv_layers(
+            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         dense = Dense(output_dim=num_outputs, init="he_normal", 
                       activation="softmax", W_regularizer=l2(weight_decay), 
-                      b_regularizer=l2(weight_decay))(flatten1)
-
+                      b_regularizer=l2(weight_decay))(flatten_out)
         model = Model(input=input, output=dense)
         return model
 
-    @staticmethod
-    def build_resnet_18(input_shape, num_outputs, weight_decay=.0001, 
+
+    @classmethod
+    def build_resnet_18(cls, input_shape, num_outputs, weight_decay=.0001, 
                         inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, basic_block, [2, 2, 2, 2], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_resnet_34(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_resnet_34(cls, input_shape, num_outputs, weight_decay=.0001,
                         inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, basic_block, [3, 4, 6, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_resnet_50(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_resnet_50(cls, input_shape, num_outputs, weight_decay=.0001,
                         inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_resnet_101(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_resnet_101(cls, input_shape, num_outputs, weight_decay=.0001,
                          inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 23, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_resnet_152(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_resnet_152(cls, input_shape, num_outputs, weight_decay=.0001,
                          inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, bottleneck, [3, 8, 36, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_dm_resnet_68(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_dm_resnet_68(cls, input_shape, num_outputs, weight_decay=.0001,
                            inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
-    @staticmethod
-    def build_dm_resnet_59(input_shape, num_outputs, weight_decay=.0001,
+    @classmethod
+    def build_dm_resnet_59(cls, input_shape, num_outputs, weight_decay=.0001,
                            inp_dropout=.0, hidden_dropout=.0):
-        return ResNetBuilder.build(
+        return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
 
-class DoubleInputsResNetBuilder(object):
+class MultiViewResNetBuilder(ResNetBuilder):
     '''Residual net with two inputs
     '''
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions):
+    def build(input_shape, num_outputs, block_fn, repetitions, 
+              weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: Shall be the input shapes for both CC and MLO views.
@@ -250,52 +264,26 @@ class DoubleInputsResNetBuilder(object):
 
         :return: The keras model.
         """
-        if len(input_shape) != 3:
-            raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
-
-        # Permute dimension order if necessary
-        if K.image_dim_ordering() == 'tf':
-            input_shape = (input_shape[1], input_shape[2], input_shape[0])
 
         # First, define a shared CNN model for both CC and MLO views.
-        img_input = Input(shape=input_shape)
-        conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2))(img_input)
-        pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode="same")(conv1)
-
-        block = pool1
-        nb_filters = 64
-        for i, r in enumerate(repetitions):
-            block = _residual_block(block_fn, nb_filters=nb_filters, 
-                                    repetitions=r, is_first_layer=i == 0)(block)
-            nb_filters *= 2
-
-        # Classifier block
-        pool2 = AveragePooling2D(pool_size=(block._keras_shape[ROW_AXIS],
-                                            block._keras_shape[COL_AXIS]),
-                                 strides=(1, 1))(block)
-        flatten1 = Flatten()(pool2)
-        shared_conv_model = Model(input=img_input, output=flatten1)
-
+        input_cc, flatten_cc = ResNetBuilder._shared_conv_layers(
+            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
+        input_mlo, flatten_mlo = ResNetBuilder._shared_conv_layers(
+            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         # Then merge the conv representations of the two views.
-        input_cc = Input(shape=input_shape)
-        input_mlo = Input(shape=input_shape)
-        flatten_cc = shared_conv_model(input_cc)
-        flatten_mlo = shared_conv_model(input_mlo)
         merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax")(merged_repr)
-
+                      activation="softmax", W_regularizer=l2(weight_decay), 
+                      b_regularizer=l2(weight_decay))(merged_repr)
         discr_model = Model(input=[input_cc, input_mlo], output=dense)
         return discr_model
 
-    @staticmethod
-    def build_dm_resnet_68(input_shape, num_outputs):
-        return DoubleInputsResNetBuilder.build(
-            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3])
-
 
 def main():
-    model = ResNetBuilder.build_dm_resnet_68((1, 288, 224), 1)
+    model = MultiViewResNetBuilder.build_resnet_50(
+        (1, 288, 224), 1, inp_dropout=.2, hidden_dropout=.5)
     model.compile(loss="binary_crossentropy", optimizer="sgd")
     model.summary()
 
