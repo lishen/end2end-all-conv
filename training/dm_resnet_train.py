@@ -9,9 +9,13 @@ import os, argparse
 import numpy as np
 from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
-from dm_resnet import ResNetBuilder
+from dm_resnet import (
+    ResNetBuilder,
+    MultiViewResNetBuilder
+)
 
-def run(img_folder, img_extension='png', img_size=[288, 224], 
+
+def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
@@ -24,9 +28,18 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     random_seed = os.getenv('RANDOM_SEED', 12345)
     meta_man = DMMetaManager(exam_tsv=exam_tsv, img_tsv=img_tsv, 
                              img_folder=img_folder, img_extension=img_extension)
-    img_list, lab_list = meta_man.get_flatten_img_list()
-    img_train, img_val, lab_train, lab_val = train_test_split(
-        img_list, lab_list, test_size=val_size, random_state=random_seed, stratify=lab_list)
+    if multi_view:
+        exam_list = meta_man.get_flatten_exam_list()
+        exam_train, exam_val = train_test_split(
+            exam_list, test_size=val_size, random_state=random_seed, 
+            stratify=meta_man.exam_labs(exam_list))
+        val_size_ = len(exam_val)
+    else:
+        img_list, lab_list = meta_man.get_flatten_img_list()
+        img_train, img_val, lab_train, lab_val = train_test_split(
+            img_list, lab_list, test_size=val_size, random_state=random_seed, 
+            stratify=lab_list)
+        val_size_ = len(img_val)
     train_img_gen = DMImageDataGenerator(
         samplewise_center=True, 
         samplewise_std_normalization=True, 
@@ -35,34 +48,46 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
     val_img_gen = DMImageDataGenerator(
         samplewise_center=True, 
         samplewise_std_normalization=True)
-    train_generator = train_img_gen.flow_from_img_list(
-        img_train, lab_train, target_size=(img_size[0], img_size[1]), 
-        batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
-    val_generator = val_img_gen.flow_from_img_list(
-        img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-        batch_size=batch_size, balance_classes=False, shuffle=False)
+    if multi_view:
+        train_generator = train_img_gen.flow_from_exam_list(
+            exam_train, target_size=(img_size[0], img_size[1]), 
+            batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
+        val_generator = val_img_gen.flow_from_exam_list(
+            exam_val, target_size=(img_size[0], img_size[1]), 
+            batch_size=batch_size, balance_classes=False, shuffle=False)
+    else:
+        train_generator = train_img_gen.flow_from_img_list(
+            img_train, lab_train, target_size=(img_size[0], img_size[1]), 
+            batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
+        val_generator = val_img_gen.flow_from_img_list(
+            img_val, lab_val, target_size=(img_size[0], img_size[1]), 
+            batch_size=batch_size, balance_classes=False, shuffle=False)
 
     # Model training.
+    if multi_view:
+        builder = MultiViewResNetBuilder
+    else:
+        builder = ResNetBuilder
     if net == 'resnet18':
-        model = ResNetBuilder.build_resnet_18(
+        model = builder.build_resnet_18(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet34':
-        model = ResNetBuilder.build_resnet_34(
+        model = builder.build_resnet_34(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet50':
-        model = ResNetBuilder.build_resnet_50(
+        model = builder.build_resnet_50(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet59':
-        model = ResNetBuilder.build_dm_resnet_59(
+        model = builder.build_dm_resnet_59(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet68':
-        model = ResNetBuilder.build_dm_resnet_68(
+        model = builder.build_dm_resnet_68(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet101':
-        model = ResNetBuilder.build_resnet_101(
+        model = builder.build_resnet_101(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
     elif net == 'resnet152':
-        model = ResNetBuilder.build_resnet_152(
+        model = builder.build_resnet_152(
             (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
 
     sgd = SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
@@ -78,7 +103,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224],
         samples_per_epoch=samples_per_epoch, 
         nb_epoch=nb_epoch, 
         validation_data=val_generator, 
-        nb_val_samples=len(img_val), 
+        nb_val_samples=val_size_, 
         callbacks=[reduce_lr, early_stopping, checkpointer], 
         nb_worker=nb_worker, 
         pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
@@ -110,6 +135,9 @@ if __name__ == '__main__':
                         type=str, default="png")
     parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, 
                         default=[288, 224])
+    parser.add_argument("--multi-view", dest="multi_view", action="store_true")
+    parser.add_argument("--no-multi-view", dest="multi_view", action="store_false")
+    parser.set_defaults(multi_view=False)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
@@ -137,6 +165,7 @@ if __name__ == '__main__':
     run_opts = dict(
         img_extension=args.img_extension, 
         img_size=args.img_size, 
+        multi_view=args.multi_view,
         batch_size=args.batch_size, 
         samples_per_epoch=args.samples_per_epoch, 
         nb_epoch=args.nb_epoch, 

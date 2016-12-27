@@ -228,6 +228,11 @@ class DMMetaManager(object):
                                self._get_info_per_exam(exam_dat)) )
         return exam_list
 
+    @staticmethod
+    def exam_labs(exam_list):
+        return [ 1 if e[2]['L']['cancer'] or e[2]['R']['cancer'] else 0 
+                 for e in exam_list ]
+
 
     def get_last_exam_list(self, meta=False):
         '''Get the last exam training data list
