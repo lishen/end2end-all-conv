@@ -16,6 +16,7 @@ from dm_resnet import (
 
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
+        do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
@@ -23,6 +24,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
         final_model='./modelState/dm_resnet_final_model.h5'):
+    '''Run ResNet training on mammograms using an exam or image list
+    Args:
+        featurewise_mean, featurewise_std ([float]): they are estimated from 
+                1152 x 896 pngs. Using different sized pngs give very close
+                results.
+    '''
 
     # Setup training and validation data.
     random_seed = os.getenv('RANDOM_SEED', 12345)
@@ -40,14 +47,26 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
             img_list, lab_list, test_size=val_size, random_state=random_seed, 
             stratify=lab_list)
         val_size_ = len(img_val)
+
     train_img_gen = DMImageDataGenerator(
-        samplewise_center=True, 
-        samplewise_std_normalization=True, 
         horizontal_flip=True, 
         vertical_flip=True)
-    val_img_gen = DMImageDataGenerator(
-        samplewise_center=True, 
-        samplewise_std_normalization=True)
+    val_img_gen = DMImageDataGenerator()
+    if do_featurewise_norm:
+        train_img_gen.featurewise_mean = True
+        train_img_gen.featurewise_std = True
+        val_img_gen.featurewise_mean = True
+        val_img_gen.featurewise_std = True
+        train_img_gen.mean = featurewise_mean
+        train_img_gen.std = featurewise_std
+        val_img_gen.mean = featurewise_mean
+        val_img_gen.std = featurewise_std
+    else:
+        train_img_gen.samplewise_mean = True
+        train_img_gen.samplewise_std = True
+        val_img_gen.samplewise_mean = True
+        val_img_gen.samplewise_std = True
+
     if multi_view:
         train_generator = train_img_gen.flow_from_exam_list(
             exam_train, target_size=(img_size[0], img_size[1]), 
@@ -138,6 +157,11 @@ if __name__ == '__main__':
     parser.add_argument("--multi-view", dest="multi_view", action="store_true")
     parser.add_argument("--no-multi-view", dest="multi_view", action="store_false")
     parser.set_defaults(multi_view=False)
+    parser.add_argument("--featurewise-norm", dest="do_featurewise_norm", action="store_true")
+    parser.add_argument("--no-featurewise-norm", dest="do_featurewise_norm", action="store_false")
+    parser.set_defaults(do_featurewise_norm=True)
+    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=7772.)
+    parser.add_argument("--featurewise-std", dest="featurewise_std", type=float, default=12187.)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
@@ -166,6 +190,9 @@ if __name__ == '__main__':
         img_extension=args.img_extension, 
         img_size=args.img_size, 
         multi_view=args.multi_view,
+        do_featurewise_norm=args.do_featurewise_norm,
+        featurewise_mean=args.featurewise_mean,
+        featurewise_std=args.featurewise_std,
         batch_size=args.batch_size, 
         samples_per_epoch=args.samples_per_epoch, 
         nb_epoch=args.nb_epoch, 
