@@ -15,8 +15,11 @@ from keras.layers.convolutional import (
     AveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
-from keras.regularizers import l2
+from keras.regularizers import l2, l1l2
 from keras import backend as K
+# import warnings
+# warnings.filterwarnings('error')
+
 
 if K.image_dim_ordering() == 'tf':
     ROW_AXIS = 1
@@ -34,8 +37,7 @@ def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1),
     def f(input):
         conv = Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, 
                              subsample=subsample, init="he_normal", 
-                             border_mode="same", W_regularizer=l2(weight_decay), 
-                             b_regularizer=l2(weight_decay))(input)
+                             border_mode="same", W_regularizer=l2(weight_decay))(input)
         norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(conv)
         relu = Activation("relu")(norm)
         return Dropout(dropout)(relu)
@@ -51,9 +53,9 @@ def _bn_relu_conv(nb_filter, nb_row, nb_col, subsample=(1, 1),
         norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(input)
         activation = Activation("relu")(norm)
         activation = Dropout(dropout)(activation)
-        return Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, subsample=subsample,
-                             init="he_normal", border_mode="same", W_regularizer=l2(weight_decay), 
-                             b_regularizer=l2(weight_decay))(activation)
+        return Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, 
+                             subsample=subsample, init="he_normal", border_mode="same", 
+                             W_regularizer=l2(weight_decay))(activation)
 
     return f
 
@@ -76,8 +78,7 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0):
                                  nb_row=1, nb_col=1,
                                  subsample=(stride_width, stride_height),
                                  init="he_normal", border_mode="valid", 
-                                 W_regularizer=l2(weight_decay), 
-                                 b_regularizer=l2(weight_decay))(input)
+                                 W_regularizer=l2(weight_decay))(input)
 
     return merge([shortcut, residual], mode="sum")
 
@@ -134,8 +135,8 @@ class ResNetBuilder(object):
         if K.image_dim_ordering() == 'tf':
             input_shape = (input_shape[1], input_shape[2], input_shape[0])
 
-        input = Input(shape=input_shape)
-        dropped = Dropout(inp_dropout)(input)
+        input_ = Input(shape=input_shape)
+        dropped = Dropout(inp_dropout)(input_)
         conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2), 
                               weight_decay=weight_decay, dropout=hidden_dropout)(dropped)
         pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode="same")(conv1)
@@ -156,12 +157,23 @@ class ResNetBuilder(object):
         # pool2 = Dropout(hidden_dropout)(pool2)
         flatten1 = Flatten()(pool2)
 
-        return input, flatten1
+        return input_, flatten1
 
+    @staticmethod
+    def l1l2_penalty(alpha=1.0, l1_ratio=0.5):
+        '''Calculate L1 and L2 penalties for a Keras layer
+        This follows the same formulation as in the R package glmnet and Sklearn
+        Args:
+            alpha ([float]): amount of regularization.
+            l1_ratio ([float]): portion of L1 penalty. Setting to 1.0 equals 
+                    Lasso.
+        '''
+        return l1_ratio*alpha, 1./2*(1 - l1_ratio)*alpha
 
     @staticmethod
     def build(input_shape, num_outputs, block_fn, repetitions, 
-              weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
+              weight_decay=.0001, alpha=1., l1_ratio=.5, 
+              inp_dropout=.0, hidden_dropout=.0):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: The input shape in the form (nb_channels, nb_rows, nb_cols)
@@ -180,15 +192,16 @@ class ResNetBuilder(object):
         input, flatten_out = ResNetBuilder._shared_conv_layers(
             input_shape, block_fn, repetitions, weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
+        l1_, l2_ = ResNetBuilder.l1l2_penalty(alpha, l1_ratio)
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=l2(weight_decay), 
-                      b_regularizer=l2(weight_decay))(flatten_out)
+                      activation="softmax", W_regularizer=l1l2(l1_, l2_))(flatten_out)
         model = Model(input=input, output=dense)
         return model
 
 
     @classmethod
     def build_resnet_18(cls, input_shape, num_outputs, weight_decay=.0001, 
+                        alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, basic_block, [2, 2, 2, 2], 
@@ -197,6 +210,7 @@ class ResNetBuilder(object):
 
     @classmethod
     def build_resnet_34(cls, input_shape, num_outputs, weight_decay=.0001,
+                        alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, basic_block, [3, 4, 6, 3], 
@@ -205,6 +219,7 @@ class ResNetBuilder(object):
 
     @classmethod
     def build_resnet_50(cls, input_shape, num_outputs, weight_decay=.0001,
+                        alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
@@ -213,6 +228,7 @@ class ResNetBuilder(object):
 
     @classmethod
     def build_resnet_101(cls, input_shape, num_outputs, weight_decay=.0001,
+                         alpha=1., l1_ratio=.5,
                          inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 23, 3], 
@@ -221,6 +237,7 @@ class ResNetBuilder(object):
 
     @classmethod
     def build_resnet_152(cls, input_shape, num_outputs, weight_decay=.0001,
+                         alpha=1., l1_ratio=.5,
                          inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 8, 36, 3], 
@@ -228,18 +245,29 @@ class ResNetBuilder(object):
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_dm_resnet_68(cls, input_shape, num_outputs, weight_decay=.0001,
+    def build_dm_resnet_14(cls, input_shape, num_outputs, weight_decay=.0001,
+                           alpha=1., l1_ratio=.5,
                            inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
-            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3], 
+            input_shape, num_outputs, bottleneck, [1, 1, 1, 1], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
     def build_dm_resnet_59(cls, input_shape, num_outputs, weight_decay=.0001,
+                           alpha=1., l1_ratio=.5,
                            inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3], 
+            weight_decay=weight_decay, inp_dropout=inp_dropout, 
+            hidden_dropout=hidden_dropout)
+
+    @classmethod
+    def build_dm_resnet_68(cls, input_shape, num_outputs, weight_decay=.0001,
+                           alpha=1., l1_ratio=.5,
+                           inp_dropout=.0, hidden_dropout=.0):
+        return cls.build(
+            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3], 
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
@@ -249,7 +277,8 @@ class MultiViewResNetBuilder(ResNetBuilder):
     '''
     @staticmethod
     def build(input_shape, num_outputs, block_fn, repetitions, 
-              weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
+              weight_decay=.0001, alpha=1., l1_ratio=.5, 
+              inp_dropout=.0, hidden_dropout=.0):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: Shall be the input shapes for both CC and MLO views.
@@ -274,9 +303,9 @@ class MultiViewResNetBuilder(ResNetBuilder):
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         # Then merge the conv representations of the two views.
         merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
+        l1_, l2_ = ResNetBuilder.l1l2_penalty(alpha, l1_ratio)
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=l2(weight_decay), 
-                      b_regularizer=l2(weight_decay))(merged_repr)
+                      activation="softmax", W_regularizer=l1l2(l1_, l2_))(merged_repr)
         discr_model = Model(input=[input_cc, input_mlo], output=dense)
         return discr_model
 

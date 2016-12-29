@@ -18,7 +18,8 @@ from dm_resnet import (
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
-        balance_classes=.0, weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0,
+        balance_classes=.0, weight_decay=.0001, alpha=1., l1_ratio=.5, 
+        inp_dropout=.0, hidden_dropout=.0,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
@@ -89,25 +90,36 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         builder = ResNetBuilder
     if net == 'resnet18':
         model = builder.build_resnet_18(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
     elif net == 'resnet34':
         model = builder.build_resnet_34(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
     elif net == 'resnet50':
         model = builder.build_resnet_50(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
-    elif net == 'resnet59':
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
+    elif net == 'dmresnet14':
+        model = builder.build_dm_resnet_14(
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
+    elif net == 'dmresnet59':
         model = builder.build_dm_resnet_59(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
-    elif net == 'resnet68':
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
+    elif net == 'dmresnet68':
         model = builder.build_dm_resnet_68(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
     elif net == 'resnet101':
         model = builder.build_resnet_101(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
     elif net == 'resnet152':
         model = builder.build_resnet_152(
-            (1, img_size[0], img_size[1]), 1, weight_decay, inp_dropout, hidden_dropout)
+            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
 
     sgd = SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss='binary_crossentropy', 
@@ -160,8 +172,10 @@ if __name__ == '__main__':
     parser.add_argument("--featurewise-norm", dest="do_featurewise_norm", action="store_true")
     parser.add_argument("--no-featurewise-norm", dest="do_featurewise_norm", action="store_false")
     parser.set_defaults(do_featurewise_norm=True)
-    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=7772.)
-    parser.add_argument("--featurewise-std", dest="featurewise_std", type=float, default=12187.)
+    parser.add_argument("--featurewise-mean", "-feam", dest="featurewise_mean", 
+                        type=float, default=7772.)
+    parser.add_argument("--featurewise-std", "-feas", dest="featurewise_std", 
+                        type=float, default=12187.)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
@@ -169,6 +183,8 @@ if __name__ == '__main__':
     parser.add_argument("--balance-classes", "-bc", dest="balance_classes", type=float, default=.0)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", 
                         type=float, default=.0001)
+    parser.add_argument("--alpha", dest="alpha", type=float, default=1.)
+    parser.add_argument("--l1-ratio", dest="l1_ratio", type=float, default=.5)
     parser.add_argument("--inp-dropout", "-id", dest="inp_dropout", type=float, default=.0)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
@@ -198,6 +214,8 @@ if __name__ == '__main__':
         nb_epoch=args.nb_epoch, 
         balance_classes=args.balance_classes,
         weight_decay=args.weight_decay,
+        alpha=args.alpha,
+        l1_ratio=args.l1_ratio,
         inp_dropout=args.inp_dropout,
         hidden_dropout=args.hidden_dropout,
         val_size=args.val_size, 
