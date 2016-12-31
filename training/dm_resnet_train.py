@@ -13,6 +13,7 @@ from dm_resnet import (
     ResNetBuilder,
     MultiViewResNetBuilder
 )
+from dm_multi_gpu import make_parallel
 
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
@@ -20,7 +21,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0,
-        val_size=.2, lr_patience=5, es_patience=10, net='resnet50', nb_worker=4,
+        val_size=.2, lr_patience=5, es_patience=10, net='resnet50',
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
@@ -32,8 +33,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
                 results.
     '''
 
-    # Setup training and validation data.
+    # Read some env variables.
     random_seed = os.getenv('RANDOM_SEED', 12345)
+    nb_worker = os.getenv('NUM_CPU_CORES', 4)
+    gpu_count = os.getenv('NUM_GPU_DEVICES', 1)
+    
+    # Setup training and validation data.
     meta_man = DMMetaManager(exam_tsv=exam_tsv, img_tsv=img_tsv, 
                              img_folder=img_folder, img_extension=img_extension)
     if multi_view:
@@ -83,7 +88,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
             img_val, lab_val, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=False, shuffle=False)
 
-    # Model training.
+    # Create model.
     if multi_view:
         builder = MultiViewResNetBuilder
     else:
@@ -120,7 +125,11 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         model = builder.build_resnet_152(
             (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
+    
+    if gpu_count > 1:
+        model = make_parallel(model)
 
+    # Model training.
     sgd = SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss='binary_crossentropy', 
                   metrics=['accuracy', 'precision', 'recall'])
@@ -191,7 +200,7 @@ if __name__ == '__main__':
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=5)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
     parser.add_argument("--net", dest="net", type=str, default="resnet50")
-    parser.add_argument("--nb-worker", "-nw", dest="nb_worker", type=int, default=4)
+    # parser.add_argument("--nb-worker", "-nw", dest="nb_worker", type=int, default=4)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
@@ -222,7 +231,7 @@ if __name__ == '__main__':
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
         net=args.net,
-        nb_worker=args.nb_worker,
+        # nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        

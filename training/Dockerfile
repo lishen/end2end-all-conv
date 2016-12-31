@@ -35,6 +35,7 @@ RUN python -c "import sklearn; print sklearn.__version__"
 # ====================== Keras ==========================#
 RUN pip install -U pyyaml six h5py pydot-ng
 WORKDIR /
+RUN echo "Keras last updated: 2016-12-22"
 RUN apt-get install -y --no-install-recommends git && \
 	git clone https://github.com/lishen/keras.git
 WORKDIR keras
