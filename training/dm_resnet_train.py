@@ -20,7 +20,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, weight_decay=.0001, alpha=1., l1_ratio=.5, 
-        inp_dropout=.0, hidden_dropout=.0,
+        inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50',
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
@@ -130,7 +130,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         model = make_parallel(model)
 
     # Model training.
-    sgd = SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
+    sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss='binary_crossentropy', 
                   metrics=['accuracy', 'precision', 'recall'])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
@@ -196,6 +196,7 @@ if __name__ == '__main__':
     parser.add_argument("--l1-ratio", dest="l1_ratio", type=float, default=.5)
     parser.add_argument("--inp-dropout", "-id", dest="inp_dropout", type=float, default=.0)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
+    parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=5)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
@@ -227,6 +228,7 @@ if __name__ == '__main__':
         l1_ratio=args.l1_ratio,
         inp_dropout=args.inp_dropout,
         hidden_dropout=args.hidden_dropout,
+        init_lr=args.init_lr,
         val_size=args.val_size, 
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
