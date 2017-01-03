@@ -253,7 +253,7 @@ if __name__ == '__main__':
         inp_dropout=args.inp_dropout,
         hidden_dropout=args.hidden_dropout,
         init_lr=args.init_lr,
-        val_size=args.val_size, 
+        val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
         net=args.net,
