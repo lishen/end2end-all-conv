@@ -15,7 +15,7 @@ from keras.layers.convolutional import (
     AveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
-from keras.regularizers import l2, l1l2
+from keras.regularizers import l1, l2, l1l2
 from keras import backend as K
 # import warnings
 # warnings.filterwarnings('error')
@@ -125,8 +125,14 @@ def bottleneck(nb_filters, init_subsample=(1, 1), **kw_args):
 class ResNetBuilder(object):
 
     @staticmethod
-    def _shared_conv_layers(input_shape, block_fn, repetitions, 
+    def _shared_conv_layers(input_shape, block_fn, repetitions, nb_init_filter=64,
+                            init_filter_size=7, init_conv_stride=2, pool_size=3,
+                            pool_stride=2,
                             weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
+        '''Create shared conv layers for all inputs
+        Args:
+            pool_size ([int]): set to 0 or False to turn off the first max pooling.
+        '''
 
         if len(input_shape) != 3:
             raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
@@ -137,12 +143,20 @@ class ResNetBuilder(object):
 
         input_ = Input(shape=input_shape)
         dropped = Dropout(inp_dropout)(input_)
-        conv1 = _conv_bn_relu(nb_filter=64, nb_row=7, nb_col=7, subsample=(2, 2), 
+        conv1 = _conv_bn_relu(nb_filter=nb_init_filter, 
+                              nb_row=init_filter_size, 
+                              nb_col=init_filter_size, 
+                              subsample=(init_conv_stride, init_conv_stride), 
                               weight_decay=weight_decay, dropout=hidden_dropout)(dropped)
-        pool1 = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode="same")(conv1)
+        if pool_size:
+            pool1 = MaxPooling2D(pool_size=(pool_size, pool_size), 
+                                 strides=(pool_stride, pool_stride), 
+                                 border_mode="same")(conv1)
+            block = pool1
+        else:
+            block = conv1
 
-        block = pool1
-        nb_filters = 64
+        nb_filters = nb_init_filter
         for i, r in enumerate(repetitions):
             block = _residual_block(block_fn, nb_filters=nb_filters, repetitions=r, 
                                     is_first_layer=i == 0, 
@@ -160,7 +174,7 @@ class ResNetBuilder(object):
         return input_, flatten1
 
     @staticmethod
-    def l1l2_penalty(alpha=1.0, l1_ratio=0.5):
+    def l1l2_penalty_reg(alpha=1.0, l1_ratio=0.5):
         '''Calculate L1 and L2 penalties for a Keras layer
         This follows the same formulation as in the R package glmnet and Sklearn
         Args:
@@ -168,10 +182,16 @@ class ResNetBuilder(object):
             l1_ratio ([float]): portion of L1 penalty. Setting to 1.0 equals 
                     Lasso.
         '''
-        return l1_ratio*alpha, 1./2*(1 - l1_ratio)*alpha
+        if l1_ratio == .0:
+            return l2(alpha)
+        elif l1_ratio == 1.:
+            return l1(alpha)
+        else:
+            return l1l2(l1_ratio*alpha, 1./2*(1 - l1_ratio)*alpha)
 
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions, 
+    def build(input_shape, num_outputs, block_fn, repetitions, nb_init_filter=64,
+              init_filter_size=7, init_conv_stride=2, pool_size=3, pool_stride=2,
               weight_decay=.0001, alpha=1., l1_ratio=.5, 
               inp_dropout=.0, hidden_dropout=.0):
         """
@@ -190,84 +210,142 @@ class ResNetBuilder(object):
         """
 
         input, flatten_out = ResNetBuilder._shared_conv_layers(
-            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            input_shape, block_fn, repetitions, 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
+            init_conv_stride=init_conv_stride, 
+            pool_size=pool_size, pool_stride=pool_stride, 
+            weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
-        l1_, l2_ = ResNetBuilder.l1l2_penalty(alpha, l1_ratio)
+        enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=l1l2(l1_, l2_))(flatten_out)
+                      activation="softmax", W_regularizer=enet_penalty)(flatten_out)
         model = Model(input=input, output=dense)
         return model
 
 
     @classmethod
-    def build_resnet_18(cls, input_shape, num_outputs, weight_decay=.0001, 
-                        alpha=1., l1_ratio=.5,
+    def build_resnet_18(cls, input_shape, num_outputs, 
+                        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                        pool_size=3, pool_stride=2, 
+                        weight_decay=.0001, alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, basic_block, [2, 2, 2, 2], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_resnet_34(cls, input_shape, num_outputs, weight_decay=.0001,
-                        alpha=1., l1_ratio=.5,
+    def build_resnet_34(cls, input_shape, num_outputs, 
+                        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                        pool_size=3, pool_stride=2, 
+                        weight_decay=.0001, alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, basic_block, [3, 4, 6, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_resnet_50(cls, input_shape, num_outputs, weight_decay=.0001,
-                        alpha=1., l1_ratio=.5,
+    def build_resnet_50(cls, input_shape, num_outputs, 
+                        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                        pool_size=3, pool_stride=2, 
+                        weight_decay=.0001, alpha=1., l1_ratio=.5,
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_resnet_101(cls, input_shape, num_outputs, weight_decay=.0001,
-                         alpha=1., l1_ratio=.5,
+    def build_resnet_101(cls, input_shape, num_outputs, 
+                         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                         pool_size=3, pool_stride=2, 
+                         weight_decay=.0001, alpha=1., l1_ratio=.5,
                          inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 23, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_resnet_152(cls, input_shape, num_outputs, weight_decay=.0001,
-                         alpha=1., l1_ratio=.5,
+    def build_resnet_152(cls, input_shape, num_outputs, 
+                         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                         pool_size=3, pool_stride=2, 
+                         weight_decay=.0001, alpha=1., l1_ratio=.5,
                          inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 8, 36, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_dm_resnet_14(cls, input_shape, num_outputs, weight_decay=.0001,
-                           alpha=1., l1_ratio=.5,
+    def build_dm_resnet_14(cls, input_shape, num_outputs, 
+                           nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                           pool_size=3, pool_stride=2, 
+                           weight_decay=.0001, alpha=1., l1_ratio=.5,
                            inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [1, 1, 1, 1], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_dm_resnet_59(cls, input_shape, num_outputs, weight_decay=.0001,
-                           alpha=1., l1_ratio=.5,
+    def build_dm_resnet_47rb5(cls, input_shape, num_outputs, 
+                           nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                           pool_size=3, pool_stride=2, 
+                           weight_decay=.0001, alpha=1., l1_ratio=.5,
                            inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
-            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3], 
+            input_shape, num_outputs, bottleneck, [3, 3, 3, 3, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
     @classmethod
-    def build_dm_resnet_68(cls, input_shape, num_outputs, weight_decay=.0001,
-                           alpha=1., l1_ratio=.5,
+    def build_dm_resnet_56rb6(cls, input_shape, num_outputs, 
+                           nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                           pool_size=3, pool_stride=2, 
+                           weight_decay=.0001, alpha=1., l1_ratio=.5,
                            inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
-            input_shape, num_outputs, bottleneck, [3, 4, 6, 3, 3, 3], 
+            input_shape, num_outputs, bottleneck, [3, 3, 3, 3, 3, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
+            weight_decay=weight_decay, inp_dropout=inp_dropout, 
+            hidden_dropout=hidden_dropout)
+
+    @classmethod
+    def build_dm_resnet_65rb7(cls, input_shape, num_outputs, 
+                           nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                           pool_size=3, pool_stride=2, 
+                           weight_decay=.0001, alpha=1., l1_ratio=.5,
+                           inp_dropout=.0, hidden_dropout=.0):
+        return cls.build(
+            input_shape, num_outputs, bottleneck, [3, 3, 3, 3, 3, 3, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
             hidden_dropout=hidden_dropout)
 
@@ -276,7 +354,8 @@ class MultiViewResNetBuilder(ResNetBuilder):
     '''Residual net with two inputs
     '''
     @staticmethod
-    def build(input_shape, num_outputs, block_fn, repetitions, 
+    def build(input_shape, num_outputs, block_fn, repetitions, nb_init_filter=64,
+              init_filter_size=7, init_conv_stride=2, pool_size=3, pool_stride=2,
               weight_decay=.0001, alpha=1., l1_ratio=.5, 
               inp_dropout=.0, hidden_dropout=.0):
         """
@@ -296,16 +375,24 @@ class MultiViewResNetBuilder(ResNetBuilder):
 
         # First, define a shared CNN model for both CC and MLO views.
         input_cc, flatten_cc = ResNetBuilder._shared_conv_layers(
-            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            input_shape, block_fn, repetitions, 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
+            init_conv_stride=init_conv_stride, 
+            pool_size=pool_size, pool_stride=pool_stride, 
+            weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         input_mlo, flatten_mlo = ResNetBuilder._shared_conv_layers(
-            input_shape, block_fn, repetitions, weight_decay=weight_decay, 
+            input_shape, block_fn, repetitions, 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
+            init_conv_stride=init_conv_stride, 
+            pool_size=pool_size, pool_stride=pool_stride, 
+            weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         # Then merge the conv representations of the two views.
         merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
-        l1_, l2_ = ResNetBuilder.l1l2_penalty(alpha, l1_ratio)
+        enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=l1l2(l1_, l2_))(merged_repr)
+                      activation="softmax", W_regularizer=enet_penalty)(merged_repr)
         discr_model = Model(input=[input_cc, input_mlo], output=dense)
         return discr_model
 

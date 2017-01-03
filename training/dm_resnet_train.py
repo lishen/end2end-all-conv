@@ -18,8 +18,9 @@ from dm_multi_gpu import make_parallel
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
-        batch_size=16, samples_per_epoch=160, nb_epoch=20, 
-        balance_classes=.0, weight_decay=.0001, alpha=1., l1_ratio=.5, 
+        batch_size=16, samples_per_epoch=160, nb_epoch=20, balance_classes=.0, 
+        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+        pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50',
         exam_tsv='./metadata/exams_metadata.tsv',
@@ -95,35 +96,48 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         builder = ResNetBuilder
     if net == 'resnet18':
         model = builder.build_resnet_18(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     elif net == 'resnet34':
         model = builder.build_resnet_34(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     elif net == 'resnet50':
         model = builder.build_resnet_50(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     elif net == 'dmresnet14':
         model = builder.build_dm_resnet_14(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
-    elif net == 'dmresnet59':
-        model = builder.build_dm_resnet_59(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+    elif net == 'dmresnet47rb5':
+        model = builder.build_dm_resnet_47rb5(
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
-    elif net == 'dmresnet68':
-        model = builder.build_dm_resnet_68(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+    elif net == 'dmresnet56rb6':
+        model = builder.build_dm_resnet_56rb6(
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+            inp_dropout, hidden_dropout)
+    elif net == 'dmresnet65rb7':
+        model = builder.build_dm_resnet_65rb7(
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     elif net == 'resnet101':
         model = builder.build_resnet_101(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     elif net == 'resnet152':
         model = builder.build_resnet_152(
-            (1, img_size[0], img_size[1]), 1, weight_decay, alpha, l1_ratio, 
+            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
             inp_dropout, hidden_dropout)
     
     if gpu_count > 1:
@@ -190,6 +204,11 @@ if __name__ == '__main__':
                         type=int, default=160)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--balance-classes", "-bc", dest="balance_classes", type=float, default=.0)
+    parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=64)
+    parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=7)
+    parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
+    parser.add_argument("--max-pooling-size", "-mps", dest="pool_size", type=int, default=3)
+    parser.add_argument("--max-pooling-stride", "-mpr", dest="pool_stride", type=int, default=2)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", 
                         type=float, default=.0001)
     parser.add_argument("--alpha", dest="alpha", type=float, default=1.)
@@ -223,6 +242,11 @@ if __name__ == '__main__':
         samples_per_epoch=args.samples_per_epoch, 
         nb_epoch=args.nb_epoch, 
         balance_classes=args.balance_classes,
+        nb_init_filter=args.nb_init_filter, 
+        init_filter_size=args.init_filter_size, 
+        init_conv_stride=args.init_conv_stride, 
+        pool_size=args.pool_size, 
+        pool_stride=args.pool_stride, 
         weight_decay=args.weight_decay,
         alpha=args.alpha,
         l1_ratio=args.l1_ratio,
