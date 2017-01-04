@@ -35,9 +35,9 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     '''
 
     # Read some env variables.
-    random_seed = os.getenv('RANDOM_SEED', 12345)
-    nb_worker = os.getenv('NUM_CPU_CORES', 4)
-    gpu_count = os.getenv('NUM_GPU_DEVICES', 1)
+    random_seed = int(os.getenv('RANDOM_SEED', 12345))
+    nb_worker = int(os.getenv('NUM_CPU_CORES', 4))
+    gpu_count = int(os.getenv('NUM_GPU_DEVICES', 1))
     
     # Setup training and validation data.
     meta_man = DMMetaManager(exam_tsv=exam_tsv, img_tsv=img_tsv, 
@@ -141,7 +141,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
             inp_dropout, hidden_dropout)
     
     if gpu_count > 1:
-        model = make_parallel(model)
+        model = make_parallel(model, gpu_count)
 
     # Model training.
     sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
