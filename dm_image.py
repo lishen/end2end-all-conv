@@ -216,9 +216,10 @@ class DMExamListIterator(Iterator):
             index_array = index_balancer(index_array, classes_, ratio)
 
         # The transformation of images is not under thread lock so it can be done in parallel
-        nb_unimaged = np.sum(np.isnan(self.classes[index_array, :]))
+        # nb_unimaged = np.sum(np.isnan(self.classes[index_array, :]))
         # batch size measures the number of exams, an exam has two breasts.
-        current_batch_size = current_batch_size*2 - nb_unimaged
+        # current_batch_size = current_batch_size*2 - nb_unimaged
+        current_batch_size = current_batch_size*2
         batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
         batch_x_mlo = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
 
@@ -260,29 +261,30 @@ class DMExamListIterator(Iterator):
         adv = 0
         last_eidx = None
         for eidx in index_array:
-            if eidx == last_eidx:
+            if eidx == last_eidx:  # whether over-sampling the same image.
                 batch_x_cc[adv] = batch_x_cc[adv-1]
                 batch_x_mlo[adv] = batch_x_mlo[adv-1]
                 adv += 1
             else:
                 last_eidx = eidx
                 exam_dat = self.exam_list[eidx][2]
-                if not np.isnan(self.classes[eidx, 0]):
-                    img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
-                    batch_x_cc[adv] = img_cc
-                    batch_x_mlo[adv] = img_mlo
-                    adv += 1
-                if not np.isnan(self.classes[eidx, 1]):
-                    img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
-                    batch_x_cc[adv] = img_cc
-                    batch_x_mlo[adv] = img_mlo
-                    adv += 1
+                # if not np.isnan(self.classes[eidx, 0]):
+                img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
+                batch_x_cc[adv] = img_cc
+                batch_x_mlo[adv] = img_mlo
+                adv += 1
+                # if not np.isnan(self.classes[eidx, 1]):
+                img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
+                batch_x_cc[adv] = img_cc
+                batch_x_mlo[adv] = img_mlo
+                adv += 1
         # transform and standardize.
         for i in range(current_batch_size):
-            batch_x_cc[i] = self.image_data_generator.random_transform(batch_x_cc[i])
-            batch_x_cc[i] = self.image_data_generator.standardize(batch_x_cc[i])
-            batch_x_mlo[i] = self.image_data_generator.random_transform(batch_x_mlo[i])
-            batch_x_mlo[i] = self.image_data_generator.standardize(batch_x_mlo[i])
+            if not np.all(batch_x_cc[i] == 0):
+                batch_x_cc[i] = self.image_data_generator.random_transform(batch_x_cc[i])
+                batch_x_cc[i] = self.image_data_generator.standardize(batch_x_cc[i])
+                batch_x_mlo[i] = self.image_data_generator.random_transform(batch_x_mlo[i])
+                batch_x_mlo[i] = self.image_data_generator.standardize(batch_x_mlo[i])
 
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
@@ -305,7 +307,8 @@ class DMExamListIterator(Iterator):
         
         # build batch of labels
         flat_classes = self.classes[index_array, :].ravel()  # [L, R, L, R, ...]
-        flat_classes = flat_classes[np.logical_not(np.isnan(flat_classes))]
+        # flat_classes = flat_classes[np.logical_not(np.isnan(flat_classes))]
+        flat_classes[np.isnan(flat_classes)] = 0  # fill in non-cancerous labels.
         if self.class_mode == 'sparse':
             batch_y = flat_classes
         elif self.class_mode == 'binary':
