@@ -106,7 +106,7 @@ class DMImgListIterator(Iterator):
         for i, j in enumerate(index_array):
             fname = self.filenames[j]
             if fname == last_fname:
-                batch_x[i] = batch_x[i-1]  # just copy, no reading.
+                batch_x[i] = batch_x[i-1]  # avoid repeated readings.
             else:
                 last_fname = fname
                 img = read_resize_img(fname, self.target_size, self.gs_255)
@@ -261,23 +261,23 @@ class DMExamListIterator(Iterator):
         adv = 0
         last_eidx = None
         for eidx in index_array:
-            if eidx == last_eidx:  # whether over-sampling the same image.
-                batch_x_cc[adv] = batch_x_cc[adv-1]
-                batch_x_mlo[adv] = batch_x_mlo[adv-1]
-                adv += 1
-            else:
-                last_eidx = eidx
-                exam_dat = self.exam_list[eidx][2]
-                # if not np.isnan(self.classes[eidx, 0]):
-                img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
-                batch_x_cc[adv] = img_cc
-                batch_x_mlo[adv] = img_mlo
-                adv += 1
-                # if not np.isnan(self.classes[eidx, 1]):
-                img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
-                batch_x_cc[adv] = img_cc
-                batch_x_mlo[adv] = img_mlo
-                adv += 1
+            # if eidx == last_eidx:  # whether over-sampling the same image.
+            #     batch_x_cc[adv] = batch_x_cc[adv-1]
+            #     batch_x_mlo[adv] = batch_x_mlo[adv-1]
+            #     adv += 1
+            # else:
+            last_eidx = eidx
+            exam_dat = self.exam_list[eidx][2]
+            # if not np.isnan(self.classes[eidx, 0]):
+            img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
+            batch_x_cc[adv] = img_cc
+            batch_x_mlo[adv] = img_mlo
+            adv += 1
+            # if not np.isnan(self.classes[eidx, 1]):
+            img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
+            batch_x_cc[adv] = img_cc
+            batch_x_mlo[adv] = img_mlo
+            adv += 1
         # transform and standardize.
         for i in range(current_batch_size):
             if not np.all(batch_x_cc[i] == 0):
