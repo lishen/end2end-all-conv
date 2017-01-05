@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.random import RandomState, choice
+from numpy.random import RandomState
 from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
 import keras.backend as K
@@ -7,7 +7,7 @@ import cv2
 import dicom
 
 
-def index_balancer(index_array, classes, ratio):
+def index_balancer(index_array, classes, ratio, rng):
     '''Balance an index array according to desired neg:pos ratio
     '''
     current_batch_size = len(index_array)
@@ -18,7 +18,7 @@ def index_balancer(index_array, classes, ratio):
     probs[classes==1] = pos_weight
     probs[classes==0] = neg_weight
     probs /= probs.sum()
-    index_array = choice(index_array, current_batch_size, p=probs)
+    index_array = rng.choice(index_array, current_batch_size, p=probs)
     index_array.sort()  # can avoid repeated img reading.
     return index_array
 
@@ -156,7 +156,7 @@ class DMExamListIterator(Iterator):
 
     def __init__(self, exam_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False,
+                 class_mode='binary', balance_classes=False, all_neg_skip=False,
                  batch_size=16, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         if dim_ordering == 'default':
@@ -176,6 +176,7 @@ class DMExamListIterator(Iterator):
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
         self.balance_classes = balance_classes
+        self.all_neg_skip = all_neg_skip
         self.seed = seed
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
@@ -206,14 +207,18 @@ class DMExamListIterator(Iterator):
     def next(self):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
-            # Obtain the current random state to draw images randomly.
-            seed_ = 0 if self.seed is None else self.seed
-            current_batch_rs = RandomState(seed_ + self.total_batches_seen)
-        if self.balance_classes:
-            ratio = float(self.balance_classes)  # neg vs. pos.
             classes_ = np.array([ 1 if p[0] or p[1] else 0 for 
                                   p in self.classes[index_array, :] ])
-            index_array = index_balancer(index_array, classes_, ratio)
+            while self.all_neg_skip and np.all(classes_ == 0):
+                index_array, current_index, current_batch_size = next(self.index_generator)
+                classes_ = np.array([ 1 if p[0] or p[1] else 0 for 
+                                      p in self.classes[index_array, :] ])                
+            # Obtain the current random state to draw images randomly.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
+        if self.balance_classes:
+            ratio = float(self.balance_classes)  # neg vs. pos.
+            index_array = index_balancer(index_array, classes_, ratio, rng)
 
         # The transformation of images is not under thread lock so it can be done in parallel
         # nb_unimaged = np.sum(np.isnan(self.classes[index_array, :]))
@@ -226,7 +231,7 @@ class DMExamListIterator(Iterator):
         def rand_draw_img(img_df):
             '''Randomly read an image when there is repeated imaging
             '''
-            fname = img_df['filename'].sample(1, random_state=current_batch_rs).iloc[0]
+            fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
             img = read_resize_img(fname, self.target_size, self.gs_255)
             return img
 
@@ -291,7 +296,7 @@ class DMExamListIterator(Iterator):
             for i in range(current_batch_size):
                 fname_base = '{prefix}_{index}_{hash}'.format(prefix=self.save_prefix,
                                                               index=current_index*2 + i,
-                                                              hash=np.random.randint(1e4))
+                                                              hash=rng.randint(1e4))
                 fname_cc = fname_base + '_cc.' + self.save_format
                 fname_mlo = fname_base + '_mlo.' + self.save_format
                 img_cc = batch_x_cc[i]
@@ -381,12 +386,14 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_exam_list(self, exam_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           balance_classes=False, batch_size=16, shuffle=True, seed=None,
+                           balance_classes=False, all_neg_skip=False, 
+                           batch_size=16, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMExamListIterator(
             exam_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
-            balance_classes=balance_classes, dim_ordering=self.dim_ordering,
+            balance_classes=balance_classes, all_neg_skip=all_neg_skip, 
+            dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
 

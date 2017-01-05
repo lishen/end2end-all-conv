@@ -18,7 +18,8 @@ from dm_multi_gpu import make_parallel
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
-        batch_size=16, samples_per_epoch=160, nb_epoch=20, balance_classes=.0, 
+        batch_size=16, samples_per_epoch=160, nb_epoch=20, 
+        balance_classes=.0, all_neg_skip=False,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
@@ -77,10 +78,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     if multi_view:
         train_generator = train_img_gen.flow_from_exam_list(
             exam_train, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
+            batch_size=batch_size, balance_classes=balance_classes, 
+            all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
         val_generator = val_img_gen.flow_from_exam_list(
             exam_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=False, shuffle=False)
+            batch_size=batch_size, balance_classes=False, 
+            all_neg_skip=False, shuffle=False, seed=random_seed)
     else:
         train_generator = train_img_gen.flow_from_img_list(
             img_train, lab_train, target_size=(img_size[0], img_size[1]), 
@@ -204,6 +207,9 @@ if __name__ == '__main__':
                         type=int, default=160)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--balance-classes", "-bc", dest="balance_classes", type=float, default=.0)
+    parser.add_argument("--allneg-skip", dest="all_neg_skip", action="store_true")
+    parser.add_argument("--no-allneg-skip", dest="all_neg_skip", action="store_false")
+    parser.set_defaults(all_neg_skip=False)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=64)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=7)
     parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
@@ -242,6 +248,7 @@ if __name__ == '__main__':
         samples_per_epoch=args.samples_per_epoch, 
         nb_epoch=args.nb_epoch, 
         balance_classes=args.balance_classes,
+        all_neg_skip=args.all_neg_skip,
         nb_init_filter=args.nb_init_filter, 
         init_filter_size=args.init_filter_size, 
         init_conv_stride=args.init_conv_stride, 
