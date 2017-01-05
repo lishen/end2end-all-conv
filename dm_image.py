@@ -290,7 +290,7 @@ class DMExamListIterator(Iterator):
         if self.save_to_dir:
             for i in range(current_batch_size):
                 fname_base = '{prefix}_{index}_{hash}'.format(prefix=self.save_prefix,
-                                                              index=current_index + i,
+                                                              index=current_index*2 + i,
                                                               hash=np.random.randint(1e4))
                 fname_cc = fname_base + '_cc.' + self.save_format
                 fname_mlo = fname_base + '_mlo.' + self.save_format
