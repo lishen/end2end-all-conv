@@ -61,19 +61,19 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         vertical_flip=True)
     val_img_gen = DMImageDataGenerator()
     if do_featurewise_norm:
-        train_img_gen.featurewise_mean = True
-        train_img_gen.featurewise_std = True
-        val_img_gen.featurewise_mean = True
-        val_img_gen.featurewise_std = True
+        train_img_gen.featurewise_center = True
+        train_img_gen.featurewise_std_normalization = True
+        val_img_gen.featurewise_center = True
+        val_img_gen.featurewise_std_normalization = True
         train_img_gen.mean = featurewise_mean
         train_img_gen.std = featurewise_std
         val_img_gen.mean = featurewise_mean
         val_img_gen.std = featurewise_std
     else:
-        train_img_gen.samplewise_mean = True
-        train_img_gen.samplewise_std = True
-        val_img_gen.samplewise_mean = True
-        val_img_gen.samplewise_std = True
+        train_img_gen.samplewise_center = True
+        train_img_gen.samplewise_std_normalization = True
+        val_img_gen.samplewise_center = True
+        val_img_gen.samplewise_std_normalization = True
 
     if multi_view:
         train_generator = train_img_gen.flow_from_exam_list(
