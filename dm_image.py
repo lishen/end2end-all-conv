@@ -47,7 +47,7 @@ class DMImgListIterator(Iterator):
 
     def __init__(self, img_list, lab_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False,
+                 class_mode='binary', balance_classes=False, all_neg_skip=False,
                  batch_size=32, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         '''DM image iterator
@@ -76,6 +76,8 @@ class DMImgListIterator(Iterator):
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
         self.balance_classes = balance_classes
+        self.all_neg_skip = all_neg_skip
+        self.seed = seed
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
@@ -95,10 +97,16 @@ class DMImgListIterator(Iterator):
     def next(self):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
+            classes_ = self.classes[index_array]
+            while self.all_neg_skip and np.all(classes_ == 0):
+                index_array, current_index, current_batch_size = next(self.index_generator)
+                classes_ = self.classes[index_array]
+            # Obtain the current random state to draw images randomly.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
-            classes = self.classes[index_array]
-            index_array = index_balancer(index_array, classes, ratio)
+            index_array = index_balancer(index_array, classes_, ratio, rng)
         # The transformation of images is not under thread lock so it can be done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape, dtype='float32')
         # build batch of image data, read images first.
@@ -127,7 +135,7 @@ class DMImgListIterator(Iterator):
             for i in range(current_batch_size):
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
-                                                                  hash=np.random.randint(1e4),
+                                                                  hash=rng.randint(1e4),
                                                                   format=self.save_format)
                 img = batch_x[i]
                 if self.dim_ordering == 'th':
@@ -374,12 +382,14 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_img_list(self, img_list, lab_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           balance_classes=False, batch_size=32, shuffle=True, seed=None,
+                           balance_classes=False, all_neg_skip=False, 
+                           batch_size=32, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMImgListIterator(
             img_list, lab_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
-            balance_classes=balance_classes, dim_ordering=self.dim_ordering,
+            balance_classes=balance_classes, all_neg_skip=all_neg_skip,
+            dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
 
