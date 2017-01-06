@@ -48,7 +48,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         exam_train, exam_val = train_test_split(
             exam_list, test_size=val_size, random_state=random_seed, 
             stratify=meta_man.exam_labs(exam_list))
-        val_size_ = len(exam_val)
+        val_size_ = len(exam_val)*2  # L and R.
     else:
         img_list, lab_list = meta_man.get_flatten_img_list()
         img_train, img_val, lab_train, lab_val = train_test_split(
@@ -79,18 +79,24 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         train_generator = train_img_gen.flow_from_exam_list(
             exam_train, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=balance_classes, 
-            all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
+            all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
+            class_mode='binary')
         val_generator = val_img_gen.flow_from_exam_list(
             exam_val, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=False, 
-            all_neg_skip=False, shuffle=False, seed=random_seed)
+            all_neg_skip=False, shuffle=False, seed=random_seed, 
+            class_mode='binary')
     else:
         train_generator = train_img_gen.flow_from_img_list(
             img_train, lab_train, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=balance_classes, seed=random_seed)
+            batch_size=batch_size, balance_classes=balance_classes, 
+            all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
+            class_mode='binary')
         val_generator = val_img_gen.flow_from_img_list(
             img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=False, shuffle=False)
+            batch_size=batch_size, balance_classes=False, 
+            all_neg_skip=False, shuffle=False, seed=random_seed,
+            class_mode='binary')
 
     # Create model.
     if multi_view:

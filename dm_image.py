@@ -2,6 +2,7 @@ import numpy as np
 from numpy.random import RandomState
 from os import path
 from keras.preprocessing.image import ImageDataGenerator, Iterator
+from keras.utils.np_utils import to_categorical
 import keras.backend as K
 import cv2
 import dicom
@@ -150,9 +151,7 @@ class DMImgListIterator(Iterator):
         elif self.class_mode == 'binary':
             batch_y = self.classes[index_array].astype('float32')
         elif self.class_mode == 'categorical':
-            batch_y = np.zeros((len(batch_x), self.nb_class), dtype='float32')
-            for i, label in enumerate(self.classes[index_array]):
-                batch_y[i, label] = 1.
+            batch_y = to_categorical(self.classes[index_array], self.nb_class)
         else:
             return batch_x
         return batch_x, batch_y
@@ -327,9 +326,7 @@ class DMExamListIterator(Iterator):
         elif self.class_mode == 'binary':
             batch_y = flat_classes.astype('float32')
         elif self.class_mode == 'categorical':
-            batch_y = np.zeros((len(batch_x), self.nb_class), dtype='float32')
-            for i, label in enumerate(flat_classes):
-                batch_y[i, label] = 1.
+            batch_y = to_categorical(flat_classes, self.nb_class)
         else:
             return [batch_x_cc, batch_x_mlo]
         return [batch_x_cc, batch_x_mlo], batch_y

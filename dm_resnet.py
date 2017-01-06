@@ -217,8 +217,9 @@ class ResNetBuilder(object):
             weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
+        activation = "softmax" if num_outputs > 1 else "sigmoid"
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=enet_penalty)(flatten_out)
+                      activation=activation, W_regularizer=enet_penalty)(flatten_out)
         model = Model(input=input, output=dense)
         return model
 
@@ -391,8 +392,9 @@ class MultiViewResNetBuilder(ResNetBuilder):
         # Then merge the conv representations of the two views.
         merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
+        activation = "softmax" if num_outputs > 1 else "sigmoid"
         dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation="softmax", W_regularizer=enet_penalty)(merged_repr)
+                      activation=activation, W_regularizer=enet_penalty)(merged_repr)
         discr_model = Model(input=[input_cc, input_mlo], output=dense)
         return discr_model
 
