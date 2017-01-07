@@ -43,7 +43,7 @@ class DMMetrics(object):
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
-        balance_classes=.0, all_neg_skip=False,
+        balance_classes=.0, all_neg_skip=False, pos_cls_weight=1.0,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
@@ -188,7 +188,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     hist = model.fit_generator(
         train_generator, 
         samples_per_epoch=samples_per_epoch, 
-        nb_epoch=nb_epoch, 
+        nb_epoch=nb_epoch,
+        class_weight={ 0: 1.0, 1: pos_cls_weight },
         validation_data=val_generator, 
         nb_val_samples=val_size_, 
         callbacks=[reduce_lr, early_stopping, checkpointer], 
@@ -238,6 +239,7 @@ if __name__ == '__main__':
     parser.add_argument("--allneg-skip", dest="all_neg_skip", action="store_true")
     parser.add_argument("--no-allneg-skip", dest="all_neg_skip", action="store_false")
     parser.set_defaults(all_neg_skip=False)
+    parser.add_argument("--pos-class-weight", "-pcw", dest="pos_cls_weight", type=float, default=1.0)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=64)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=7)
     parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
@@ -277,6 +279,7 @@ if __name__ == '__main__':
         nb_epoch=args.nb_epoch, 
         balance_classes=args.balance_classes,
         all_neg_skip=args.all_neg_skip,
+        pos_cls_weight=args.pos_cls_weight,
         nb_init_filter=args.nb_init_filter, 
         init_filter_size=args.init_filter_size, 
         init_conv_stride=args.init_conv_stride, 
