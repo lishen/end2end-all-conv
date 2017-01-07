@@ -1,4 +1,5 @@
 from sklearn.model_selection import train_test_split
+import keras.backend as K
 from keras.callbacks import (
     ReduceLROnPlateau, 
     EarlyStopping, 
@@ -14,6 +15,29 @@ from dm_resnet import (
     MultiViewResNetBuilder
 )
 from dm_multi_gpu import make_parallel
+
+
+class DMMetrics(object):
+    '''Classification metrics for the DM challenge
+    '''
+
+    @staticmethod
+    def sensitivity(y_true, y_pred):
+        y_pred_pos = K.round(K.clip(y_pred, 0, 1))
+        y_pos = K.round(K.clip(y_true, 0, 1))
+        tp = K.sum(y_pos * y_pred_pos)
+        pos = K.sum(y_pos)
+
+        return tp / (pos + K.epsilon())
+
+    @staticmethod
+    def specificity(y_true, y_pred):
+        y_pred_neg = 1 - K.round(K.clip(y_pred, 0, 1))
+        y_neg = 1 - K.round(K.clip(y_true, 0, 1))
+        tn = K.sum(y_neg * y_pred_neg)
+        neg = K.sum(y_neg)
+
+        return tn / (neg + K.epsilon())
 
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
@@ -155,7 +179,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     # Model training.
     sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss='binary_crossentropy', 
-                  metrics=['accuracy', 'precision', 'recall'])
+                  metrics=[DMMetrics.sensitivity, DMMetrics.specificity])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
@@ -176,14 +200,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     # Training report.
     min_loss_locs, = np.where(hist.history['val_loss'] == min(hist.history['val_loss']))
     best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
-    best_val_acc = hist.history['val_acc'][min_loss_locs[0]]
-    best_val_precision = hist.history['val_precision'][min_loss_locs[0]]
-    best_val_recall = hist.history['val_recall'][min_loss_locs[0]]
+    best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
+    best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
     print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
     print "Best val loss:", best_val_loss
-    print "Best val accuracy:", best_val_acc
-    print "Best val precision:", best_val_precision
-    print "Best val recall:", best_val_recall
+    print "Best val sensitivity:", best_val_sensitivity
+    print "Best val specificity:", best_val_specificity
     
     model.save(final_model)
 
