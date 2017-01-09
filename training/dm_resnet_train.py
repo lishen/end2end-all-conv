@@ -1,11 +1,13 @@
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score
 import keras.backend as K
 from keras.callbacks import (
     ReduceLROnPlateau, 
     EarlyStopping, 
-    ModelCheckpoint
+    # ModelCheckpoint
 )
 from keras.optimizers import SGD
+from keras.callbacks import Callback
 import os, argparse
 import numpy as np
 from meta import DMMetaManager
@@ -38,6 +40,42 @@ class DMMetrics(object):
         neg = K.sum(y_neg)
 
         return tn / (neg + K.epsilon())
+
+
+class DMAucModelCheckpoint(Callback):
+    '''Model checkpointer using AUROC score
+    '''
+
+    def __init__(self, filepath, test_data_gen, nb_test_samples):
+        super(DMAucModelCheckpoint, self).__init__()
+        self.filepath = filepath
+        self.test_data_gen = test_data_gen
+        self.nb_test_samples = nb_test_samples
+        self.best_epoch = None
+        self.best_auc = 0.
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.test_data_gen.reset()
+        samples_seen = 0
+        y_list = []
+        pred_list = []
+        while samples_seen < self.nb_test_samples:
+            X, y = next(self.test_data_gen)
+            samples_seen += len(y)
+            y_list.append(y)
+            pred_list.append(self.model.predict_on_batch(X))
+        y_true = np.concatenate(y_list)
+        y_pred = np.concatenate(pred_list)
+        auc = roc_auc_score(y_true, y_pred)
+        print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+        if auc > self.best_auc:
+            self.best_epoch = epoch + 1
+            self.best_auc = auc
+            self.model.save(self.filepath)
+
+    def on_train_end(self, logs={}):
+        print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
+            (self.best_auc, self.best_epoch, self.filepath)
 
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
@@ -183,8 +221,9 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
-    checkpointer = ModelCheckpoint(
-        best_model, monitor='val_loss', verbose=1, save_best_only=True)
+    auc_checkpointer = DMAucModelCheckpoint(best_model, val_generator, val_size_)
+    # checkpointer = ModelCheckpoint(
+    #     best_model, monitor='val_loss', verbose=1, save_best_only=True)
     hist = model.fit_generator(
         train_generator, 
         samples_per_epoch=samples_per_epoch, 
@@ -192,7 +231,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         class_weight={ 0: 1.0, 1: pos_cls_weight },
         validation_data=val_generator, 
         nb_val_samples=val_size_, 
-        callbacks=[reduce_lr, early_stopping, checkpointer], 
+        callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
         nb_worker=nb_worker, 
         pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
         verbose=2
@@ -203,6 +242,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
     best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
     best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
+    print "\n==== Training summary ===="
     print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
     print "Best val loss:", best_val_loss
     print "Best val sensitivity:", best_val_sensitivity
