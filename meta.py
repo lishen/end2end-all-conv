@@ -43,6 +43,30 @@ class DMMetaManager(object):
                 img_df_indexed['filename'].apply(mod_file_path)
             self.img_df_indexed = img_df_indexed
 
+        # Setup CC and MLO view categorization.
+        # View      Description
+        # *Undetermined yet.
+        # AT        axillary tail  *
+        # CC        craniocaudal
+        # CCID      craniocaudal (implant displaced)
+        # CV        cleavage  *
+        # FB        from below
+        # LM        90 lateromedial
+        # LMO       lateromedial oblique
+        # ML        90 mediolateral
+        # MLID      90 mediolateral (implant displaced)
+        # MLO       mediolateral oblique
+        # MLOID     mediolateral oblique (implant displaced)
+        # RL        rolled lateral  *
+        # RM        rolled medial  *
+        # SIO       superior inferior oblique
+        # XCCL      exaggerated craniocaudal lateral
+        # XCCM      exaggerated craniocaudal medial
+        self.view_cat_dict = {
+            'CC': 'CC', 'CCID': 'CC', 'FB': 'CC', 'LM': 'CC', 
+            'ML': 'CC', 'MLID': 'CC', 'XCCL': 'CC', 'XCCM': 'CC',
+            'MLO': 'MLO', 'LMO': 'MLO', 'MLOID': 'MLO', 'SIO': 'MLO'}
+
 
     def get_flatten_img_list(self, meta=False):
         '''Get image-level training data list
@@ -109,48 +133,21 @@ class DMMetaManager(object):
                 cancerR = np.nan
         info['L']['cancer'] = cancerL
         info['R']['cancer'] = cancerR
-        # Obtain file names for different views.
-        def view_fnames(exam_df, breast, view_list):
-            '''Obtain the file names for a view list for a breast
-            Returns:
-                a DataFrame object contains the file names.
-            '''
-            df_list = []
-            for view in view_list:
-                try:
-                    df_list.append(exam_df.loc[breast].loc[view][['filename']])
-                except KeyError:
-                    df_list.append(None)
-            try:
-                return pd.concat(df_list)
-            except ValueError:
-                return None
-
-        # View      Description
-        # *Undetermined yet.
-        # AT        axillary tail  *
-        # CC        craniocaudal
-        # CCID      craniocaudal (implant displaced)
-        # CV        cleavage  *
-        # FB        from below
-        # LM        90 lateromedial
-        # LMO       lateromedial oblique
-        # ML        90 mediolateral
-        # MLID      90 mediolateral (implant displaced)
-        # MLO       mediolateral oblique
-        # MLOID     mediolateral oblique (implant displaced)
-        # RL        rolled lateral  *
-        # RM        rolled medial  *
-        # SIO       superior inferior oblique
-        # XCCL      exaggerated craniocaudal lateral
-        # XCCM      exaggerated craniocaudal medial
-
-        cc_like_list = ['CC', 'CCID', 'FB', 'LM', 'ML', 'MLID', 'XCCL', 'XCCM']
-        mlo_like_list = ['MLO', 'LMO', 'MLOID', 'SIO']
-        info['L']['CC'] = view_fnames(exam_indexed, 'L', cc_like_list)
-        info['R']['CC'] = view_fnames(exam_indexed, 'R', cc_like_list)
-        info['L']['MLO'] = view_fnames(exam_indexed, 'L', mlo_like_list)
-        info['R']['MLO'] = view_fnames(exam_indexed, 'R', mlo_like_list)
+        info['L']['CC'] = None
+        info['R']['CC'] = None
+        info['L']['MLO'] = None
+        info['R']['MLO'] = None
+        for breast in exam_indexed.index.levels[0]:
+            for view in exam_indexed.loc[breast].index.levels[0]:
+                if view not in self.view_cat_dict:
+                    continue  # skip uncategorized view for now.
+                view_ = self.view_cat_dict[view]
+                fname_df = exam_indexed.loc[breast].loc[view][['filename']]
+                if info[breast][view_] is None:
+                    info[breast][view_] = fname_df
+                        
+                else:
+                    info[breast][view_] = info[breast][view_].append(fname_df)
 
         return info
 
