@@ -9,7 +9,7 @@ class DMMetaManager(object):
 
     def __init__(self, 
                  img_tsv='./metadata/images_crosswalk.tsv', 
-                 exam_tsv=None, 
+                 exam_tsv="", 
                  img_folder='./trainingData', 
                  img_extension='dcm'):
         '''Constructor for DMMetaManager
@@ -32,7 +32,7 @@ class DMMetaManager(object):
             img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
         except KeyError:
             img_df_indexed = img_df.set_index(['subjectId'])
-        if exam_tsv is not None:
+        if exam_tsv != "":
             exam_df = pd.read_csv(exam_tsv, sep="\t")
             exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
             self.exam_img_df = exam_df_indexed.join(img_df_indexed)

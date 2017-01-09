@@ -86,7 +86,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, lr_patience=5, es_patience=10, net='resnet50',
-        exam_tsv='./metadata/exams_metadata.tsv',
+        exam_tsv="",
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
         final_model=""):
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     parser.add_argument("--net", dest="net", type=str, default="resnet50")
     # parser.add_argument("--nb-worker", "-nw", dest="nb_worker", type=int, default=4)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
-                        default="./metadata/exams_metadata.tsv")
+                        default="")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
     parser.add_argument("--best-model", "-bm", dest="best_model", type=str, 
