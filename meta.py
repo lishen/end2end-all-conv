@@ -233,6 +233,17 @@ class DMMetaManager(object):
         return [ 1 if e[2]['L']['cancer'] or e[2]['R']['cancer'] else 0 
                  for e in exam_list ]
 
+    @staticmethod
+    def flatten_exam_labs(exam_list):
+        labs = []
+        for e in exam_list:
+            lc = e[2]['L']['cancer']
+            rc = e[2]['R']['cancer']
+            lc = lc if not np.isnan(lc) else 0
+            rc = rc if not np.isnan(rc) else 0
+            labs.append(lc)
+            labs.append(rc)
+        return labs
 
     def get_last_exam_list(self, meta=False):
         '''Get the last exam training data list
