@@ -102,9 +102,9 @@ class DMImgListIterator(Iterator):
             while self.all_neg_skip and np.all(classes_ == 0):
                 index_array, current_index, current_batch_size = next(self.index_generator)
                 classes_ = self.classes[index_array]
-            # Obtain the current random state to draw images randomly.
-            rng = RandomState() if self.seed is None else \
-                RandomState(int(self.seed) + self.total_batches_seen)
+        # Obtain the current random state to draw images randomly.
+        rng = RandomState() if self.seed is None else \
+            RandomState(int(self.seed) + self.total_batches_seen)
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
@@ -220,9 +220,9 @@ class DMExamListIterator(Iterator):
                 index_array, current_index, current_batch_size = next(self.index_generator)
                 classes_ = np.array([ 1 if p[0] or p[1] else 0 for 
                                       p in self.classes[index_array, :] ])                
-            # Obtain the current random state to draw images randomly.
-            rng = RandomState() if self.seed is None else \
-                RandomState(int(self.seed) + self.total_batches_seen)
+        # Obtain the current random state to draw images randomly.
+        rng = RandomState() if self.seed is None else \
+            RandomState(int(self.seed) + self.total_batches_seen)
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
