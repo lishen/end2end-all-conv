@@ -9,7 +9,7 @@ class DMMetaManager(object):
 
     def __init__(self, 
                  img_tsv='./metadata/images_crosswalk.tsv', 
-                 exam_tsv="", 
+                 exam_tsv='./metadata/exams_metadata.tsv', 
                  img_folder='./trainingData', 
                  img_extension='dcm'):
         '''Constructor for DMMetaManager
