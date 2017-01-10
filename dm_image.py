@@ -133,7 +133,7 @@ class DMImgListIterator(Iterator):
         
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
-            for i in range(current_batch_size):
+            for i in xrange(current_batch_size):
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
                                                                   hash=rng.randint(1e4),
@@ -192,6 +192,7 @@ class DMExamListIterator(Iterator):
         self.exam_list = exam_list
         self.nb_exam = len(exam_list)
         self.nb_class = 2
+        self.err_counter = 0
         # For each exam: 0 => subj id, 1 => exam idx, 2 => exam dat.
         self.classes = [ (e[2]['L']['cancer'], e[2]['R']['cancer']) 
                          for e in exam_list ]
@@ -235,14 +236,23 @@ class DMExamListIterator(Iterator):
         batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
         batch_x_mlo = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
 
-        def rand_draw_img(img_df):
+        def rand_draw_img(img_df, exam=None):
             '''Randomly read an image when there is repeated imaging
             '''
-            fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
-            img = read_resize_img(fname, self.target_size, self.gs_255)
+            try:
+                fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
+                img = read_resize_img(fname, self.target_size, self.gs_255)
+            except ValueError:
+                if self.err_counter < 10:
+                    print "Error encountered sampling an image dataframe:", 
+                    print img_df, "Use a blank image instead."
+                    print "Exam caused trouble:", exam
+                    self.err_counter += 1
+                img = np.zeros(self.target_size, dtype='float32')
+
             return img
 
-        def read_breast_imgs(breast_dat):
+        def read_breast_imgs(breast_dat, **kwargs):
             '''Read the images for both views for a breast
             '''
             #!!! if a view is missing, use a zero-filled 2D array.
@@ -250,11 +260,11 @@ class DMExamListIterator(Iterator):
             if breast_dat['CC'] is None:
                 img_cc = np.zeros(self.target_size, dtype='float32')
             else:
-                img_cc = rand_draw_img(breast_dat['CC'])
+                img_cc = rand_draw_img(breast_dat['CC'], **kwargs)
             if breast_dat['MLO'] is None:
                 img_mlo = np.zeros(self.target_size, dtype='float32')
             else:
-                img_mlo = rand_draw_img(breast_dat['MLO'])
+                img_mlo = rand_draw_img(breast_dat['MLO'], **kwargs)
             # Always have one channel.
             if self.dim_ordering == 'th':
                 img_cc = img_cc.reshape((1, img_cc.shape[0], img_cc.shape[1]))
@@ -264,34 +274,27 @@ class DMExamListIterator(Iterator):
                 img_mlo = img_mlo.reshape((img_mlo.shape[0], img_mlo.shape[1], 1))
 
             return (img_cc, img_mlo)
-            # if self.dim_ordering == 'th':
-            #     return np.stack((img_cc, img_mlo), axis=0)
-            # else:
-            #     return np.stack((img_cc, img_mlo), axis=-1)
             
         # build batch of image data
         adv = 0
         last_eidx = None
         for eidx in index_array:
-            # if eidx == last_eidx:  # whether over-sampling the same image.
-            #     batch_x_cc[adv] = batch_x_cc[adv-1]
-            #     batch_x_mlo[adv] = batch_x_mlo[adv-1]
-            #     adv += 1
-            # else:
-            last_eidx = eidx
+            last_eidx = eidx  # no copying because sampling a diff img is expected.
             exam_dat = self.exam_list[eidx][2]
             # if not np.isnan(self.classes[eidx, 0]):
-            img_cc, img_mlo = read_breast_imgs(exam_dat['L'])
+            img_cc, img_mlo = read_breast_imgs(exam_dat['L'], 
+                                               exam=self.exam_list[eidx])
             batch_x_cc[adv] = img_cc
             batch_x_mlo[adv] = img_mlo
             adv += 1
             # if not np.isnan(self.classes[eidx, 1]):
-            img_cc, img_mlo = read_breast_imgs(exam_dat['R'])
+            img_cc, img_mlo = read_breast_imgs(exam_dat['R'], 
+                                               exam=self.exam_list[eidx])
             batch_x_cc[adv] = img_cc
             batch_x_mlo[adv] = img_mlo
             adv += 1
         # transform and standardize.
-        for i in range(current_batch_size):
+        for i in xrange(current_batch_size):
             if not np.all(batch_x_cc[i] == 0):
                 batch_x_cc[i] = self.image_data_generator.random_transform(batch_x_cc[i])
                 batch_x_cc[i] = self.image_data_generator.standardize(batch_x_cc[i])
@@ -300,7 +303,7 @@ class DMExamListIterator(Iterator):
 
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
-            for i in range(current_batch_size):
+            for i in xrange(current_batch_size):
                 fname_base = '{prefix}_{index}_{hash}'.format(prefix=self.save_prefix,
                                                               index=current_index*2 + i,
                                                               hash=rng.randint(1e4))

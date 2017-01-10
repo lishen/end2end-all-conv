@@ -145,7 +145,6 @@ class DMMetaManager(object):
                 fname_df = exam_indexed.loc[breast].loc[view][['filename']]
                 if info[breast][view_] is None:
                     info[breast][view_] = fname_df
-                        
                 else:
                     info[breast][view_] = info[breast][view_].append(fname_df)
 
