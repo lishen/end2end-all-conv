@@ -35,7 +35,7 @@ class DMAucModelCheckpoint(Callback):
         self.filepath = filepath
         self.test_data_gen = test_data_gen
         self.nb_test_samples = nb_test_samples
-        self.best_epoch = None
+        self.best_epoch = 0
         self.best_auc = 0.
 
     def on_epoch_end(self, epoch, logs={}):
@@ -49,8 +49,11 @@ class DMAucModelCheckpoint(Callback):
             y_list.append(y)
             pred_list.append(self.model.predict_on_batch(X))
         y_true = np.concatenate(y_list)
-        y_pred = np.concatenate(pred_list)
-        auc = roc_auc_score(y_true, y_pred)
+        if len(np.unique(y_true)) == 1:
+            auc = 0.
+        else:
+            y_pred = np.concatenate(pred_list)
+            auc = roc_auc_score(y_true, y_pred)
         print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
         if auc > self.best_auc:
             self.best_epoch = epoch + 1
