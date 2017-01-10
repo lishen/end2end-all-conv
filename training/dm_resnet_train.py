@@ -28,7 +28,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
-        final_model=""):
+        final_model="NOSAVE"):
     '''Run ResNet training on mammograms using an exam or image list
     Args:
         featurewise_mean, featurewise_std ([float]): they are estimated from 
@@ -160,9 +160,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
-    callbacks_ = [reduce_lr, early_stopping]
-    if best_model != "":
-        callbacks_.append(DMAucModelCheckpoint(best_model, val_generator, val_size_))
+    auc_checkpointer = DMAucModelCheckpoint(best_model, val_generator, val_size_)
     # checkpointer = ModelCheckpoint(
     #     best_model, monitor='val_loss', verbose=1, save_best_only=True)
     hist = model.fit_generator(
@@ -172,7 +170,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         class_weight={ 0: 1.0, 1: pos_cls_weight },
         validation_data=val_generator, 
         nb_val_samples=val_size_, 
-        callbacks=callbacks_, 
+        callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
         nb_worker=nb_worker, 
         pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
         verbose=2
@@ -189,7 +187,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     print "Best val sensitivity:", best_val_sensitivity
     print "Best val specificity:", best_val_specificity
     
-    if final_model != "":
+    if final_model != "NOSAVE":
         model.save(final_model)
 
     return hist
@@ -246,7 +244,7 @@ if __name__ == '__main__':
     parser.add_argument("--best-model", "-bm", dest="best_model", type=str, 
                         default="./modelState/dm_resnet_best_model.h5")
     parser.add_argument("--final-model", "-fm", dest="final_model", type=str, 
-                        default="")
+                        default="NOSAVE")
 
     args = parser.parse_args()
     run_opts = dict(

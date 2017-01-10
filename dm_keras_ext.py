@@ -58,7 +58,8 @@ class DMAucModelCheckpoint(Callback):
         if auc > self.best_auc:
             self.best_epoch = epoch + 1
             self.best_auc = auc
-            self.model.save(self.filepath)
+            if self.filepath != "NOSAVE":
+                self.model.save(self.filepath)
 
     def on_train_end(self, logs={}):
         print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
