@@ -242,6 +242,37 @@ class DMMetaManager(object):
             labs.append(rc)
         return labs
 
+    @staticmethod
+    def exam_list_summary(exam_list):
+        '''Return a summary dataframe for an exam list
+        '''
+        subj_list = []
+        exid_list = []
+        l_cc_list = []
+        l_mlo_list = []
+        r_cc_list = []
+        r_mlo_list = []
+        l_can_list = []
+        r_can_list = []
+        def nb_fname(df):
+            return 0 if df is None else df.shape[0]
+        for e in exam_list:
+            subj_list.append(e[0])
+            exid_list.append(e[1])
+            l_cc_list.append(nb_fname(e[2]['L']['CC']))
+            l_mlo_list.append(nb_fname(e[2]['L']['MLO']))
+            r_cc_list.append(nb_fname(e[2]['R']['CC']))
+            r_mlo_list.append(nb_fname(e[2]['R']['MLO']))
+            l_can_list.append(e[2]['L']['cancer'])
+            r_can_list.append(e[2]['R']['cancer'])
+        summary_df = pd.DataFrame(
+            {'subj': subj_list, 'exam': exid_list, 
+             'L_CC': l_cc_list, 'L_MLO': l_mlo_list,
+             'R_CC': r_cc_list, 'R_MLO': r_mlo_list,
+             'L_cancer': l_can_list, 'R_cancer': r_can_list})
+        return summary_df
+
+
     def get_last_exam_list(self, meta=False):
         '''Get the last exam training data list
         Returns:
