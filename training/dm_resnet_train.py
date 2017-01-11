@@ -16,6 +16,10 @@ from dm_resnet import (
 from dm_multi_gpu import make_parallel
 from dm_keras_ext import DMMetrics, DMAucModelCheckpoint
 
+import warnings
+import exceptions
+warnings.filterwarnings('ignore', category=exceptions.UserWarning)
+
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
