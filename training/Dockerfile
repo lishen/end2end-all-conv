@@ -49,6 +49,7 @@ RUN pip install -U pandas pydicom
 WORKDIR /
 COPY train.sh train_small.sh ./
 COPY temp/*.py dm_resnet_train.py ./
+COPY modelState/2017-01-11_resnet47rb5_576/dmresnet47rb5_576_bestAuc_model.h5 ./
 # VOLUME ["/metadata", "/trainingData", "/preprocessedData", "/modelState", "/scratch"]
 
 

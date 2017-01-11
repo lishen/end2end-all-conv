@@ -5,6 +5,7 @@ from keras.callbacks import (
     # ModelCheckpoint
 )
 from keras.optimizers import SGD
+from keras.models import load_model
 import os, argparse
 import numpy as np
 from meta import DMMetaManager
@@ -28,7 +29,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
-        val_size=.2, lr_patience=5, es_patience=10, net='resnet50',
+        val_size=.2, lr_patience=5, es_patience=10, 
+        resume_from=None, net='resnet50',
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
@@ -104,55 +106,58 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
             class_mode='binary')
 
     # Create model.
-    if multi_view:
-        builder = MultiViewResNetBuilder
+    if resume_from is not None:
+        model = load_model(resume_from)
     else:
-        builder = ResNetBuilder
-    if net == 'resnet18':
-        model = builder.build_resnet_18(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'resnet34':
-        model = builder.build_resnet_34(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'resnet50':
-        model = builder.build_resnet_50(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'dmresnet14':
-        model = builder.build_dm_resnet_14(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'dmresnet47rb5':
-        model = builder.build_dm_resnet_47rb5(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'dmresnet56rb6':
-        model = builder.build_dm_resnet_56rb6(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'dmresnet65rb7':
-        model = builder.build_dm_resnet_65rb7(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'resnet101':
-        model = builder.build_resnet_101(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
-    elif net == 'resnet152':
-        model = builder.build_resnet_152(
-            (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
-            init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
-            inp_dropout, hidden_dropout)
+        if multi_view:
+            builder = MultiViewResNetBuilder
+        else:
+            builder = ResNetBuilder
+        if net == 'resnet18':
+            model = builder.build_resnet_18(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'resnet34':
+            model = builder.build_resnet_34(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'resnet50':
+            model = builder.build_resnet_50(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'dmresnet14':
+            model = builder.build_dm_resnet_14(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'dmresnet47rb5':
+            model = builder.build_dm_resnet_47rb5(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'dmresnet56rb6':
+            model = builder.build_dm_resnet_56rb6(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'dmresnet65rb7':
+            model = builder.build_dm_resnet_65rb7(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'resnet101':
+            model = builder.build_resnet_101(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
+        elif net == 'resnet152':
+            model = builder.build_resnet_152(
+                (1, img_size[0], img_size[1]), 1, nb_init_filter, init_filter_size, 
+                init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
+                inp_dropout, hidden_dropout)
     
     if gpu_count > 1:
         model = make_parallel(model, gpu_count)
@@ -239,8 +244,8 @@ if __name__ == '__main__':
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=5)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
+    parser.add_argument("--resume-from", "-rf", dest="resume_from", type=str, default=None)
     parser.add_argument("--net", dest="net", type=str, default="resnet50")
-    # parser.add_argument("--nb-worker", "-nw", dest="nb_worker", type=int, default=4)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
@@ -278,8 +283,8 @@ if __name__ == '__main__':
         val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
+        resume_from=args.resume_from,
         net=args.net,
-        # nb_worker=args.nb_worker,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
