@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
-        balance_classes=.0, all_neg_skip=False, pos_cls_weight=1.0,
+        balance_classes=.0, all_neg_skip=0., pos_cls_weight=1.0,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
@@ -225,9 +225,7 @@ if __name__ == '__main__':
                         type=int, default=160)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--balance-classes", "-bc", dest="balance_classes", type=float, default=.0)
-    parser.add_argument("--allneg-skip", dest="all_neg_skip", action="store_true")
-    parser.add_argument("--no-allneg-skip", dest="all_neg_skip", action="store_false")
-    parser.set_defaults(all_neg_skip=False)
+    parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
     parser.add_argument("--pos-class-weight", "-pcw", dest="pos_cls_weight", type=float, default=1.0)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=64)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=7)

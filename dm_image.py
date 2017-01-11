@@ -48,7 +48,7 @@ class DMImgListIterator(Iterator):
 
     def __init__(self, img_list, lab_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False, all_neg_skip=False,
+                 class_mode='binary', balance_classes=False, all_neg_skip=0.,
                  batch_size=32, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         '''DM image iterator
@@ -99,12 +99,14 @@ class DMImgListIterator(Iterator):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
             classes_ = self.classes[index_array]
-            while self.all_neg_skip and np.all(classes_ == 0):
+            # Obtain the random state for the current batch.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
+            while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
                 index_array, current_index, current_batch_size = next(self.index_generator)
                 classes_ = self.classes[index_array]
-        # Obtain the current random state to draw images randomly.
-        rng = RandomState() if self.seed is None else \
-            RandomState(int(self.seed) + self.total_batches_seen)
+                rng = RandomState() if self.seed is None else \
+                    RandomState(int(self.seed) + self.total_batches_seen)
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
@@ -163,7 +165,7 @@ class DMExamListIterator(Iterator):
 
     def __init__(self, exam_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False, all_neg_skip=False,
+                 class_mode='binary', balance_classes=False, all_neg_skip=0.,
                  batch_size=16, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         if dim_ordering == 'default':
@@ -217,13 +219,15 @@ class DMExamListIterator(Iterator):
             index_array, current_index, current_batch_size = next(self.index_generator)
             classes_ = np.array([ 1 if p[0] or p[1] else 0 for 
                                   p in self.classes[index_array, :] ])
-            while self.all_neg_skip and np.all(classes_ == 0):
+            # Obtain the random state for the current batch.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
+            while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
                 index_array, current_index, current_batch_size = next(self.index_generator)
                 classes_ = np.array([ 1 if p[0] or p[1] else 0 for 
                                       p in self.classes[index_array, :] ])                
-        # Obtain the current random state to draw images randomly.
-        rng = RandomState() if self.seed is None else \
-            RandomState(int(self.seed) + self.total_batches_seen)
+                rng = RandomState() if self.seed is None else \
+                    RandomState(int(self.seed) + self.total_batches_seen)
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
@@ -382,7 +386,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_img_list(self, img_list, lab_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           balance_classes=False, all_neg_skip=False, 
+                           balance_classes=False, all_neg_skip=0., 
                            batch_size=32, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMImgListIterator(
@@ -396,7 +400,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_exam_list(self, exam_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           balance_classes=False, all_neg_skip=False, 
+                           balance_classes=False, all_neg_skip=0., 
                            batch_size=16, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMExamListIterator(
