@@ -143,6 +143,8 @@ class DMMetaManager(object):
                     continue  # skip uncategorized view for now.
                 view_ = self.view_cat_dict[view]
                 fname_df = exam_indexed.loc[breast].loc[view][['filename']]
+                if fname_df.empty:
+                    continue
                 if info[breast][view_] is None:
                     info[breast][view_] = fname_df
                 else:
