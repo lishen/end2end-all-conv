@@ -48,7 +48,8 @@ class DMImgListIterator(Iterator):
 
     def __init__(self, img_list, lab_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False, all_neg_skip=0.,
+                 class_mode='binary', validation_mode=False,
+                 balance_classes=False, all_neg_skip=0.,
                  batch_size=32, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         '''DM image iterator
@@ -76,6 +77,11 @@ class DMImgListIterator(Iterator):
                              '; expected one of "categorical", '
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
+        self.validation_mode = validation_mode
+        if validation_mode:
+            balance_classes = False
+            all_neg_skip = 0.
+            shuffle = False
         self.balance_classes = balance_classes
         self.all_neg_skip = all_neg_skip
         self.seed = seed
@@ -107,17 +113,20 @@ class DMImgListIterator(Iterator):
                 classes_ = self.classes[index_array]
                 rng = RandomState() if self.seed is None else \
                     RandomState(int(self.seed) + self.total_batches_seen)
+
         if self.balance_classes:
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
+
         # The transformation of images is not under thread lock so it can be done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape, dtype='float32')
+
         # build batch of image data, read images first.
         last_fname = None
-        for i, j in enumerate(index_array):
-            fname = self.filenames[j]
+        for bi, ii in enumerate(index_array):  # bi: batch idx; ii: img idx.
+            fname = self.filenames[ii]
             if fname == last_fname:
-                batch_x[i] = batch_x[i-1]  # avoid repeated readings.
+                batch_x[bi] = batch_x[bi-1]  # avoid repeated readings.
             else:
                 last_fname = fname
                 img = read_resize_img(fname, self.target_size, self.gs_255)
@@ -126,25 +135,27 @@ class DMImgListIterator(Iterator):
                     x = img.reshape((1, img.shape[0], img.shape[1]))
                 else:
                     x = img.reshape((img.shape[0], img.shape[1], 1))
-                batch_x[i] = x
+                batch_x[bi] = x
+
         # transform and standardize.
         for i, x in enumerate(batch_x):
-            x = self.image_data_generator.random_transform(x)
+            if not self.validation_mode:
+                x = self.image_data_generator.random_transform(x)
             x = self.image_data_generator.standardize(x)
             batch_x[i] = x
         
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
             for i in xrange(current_batch_size):
-                fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
-                                                                  index=current_index + i,
-                                                                  hash=rng.randint(1e4),
-                                                                  format=self.save_format)
+                fname = '{prefix}_{index}_{hash}.{format}'.\
+                    format(prefix=self.save_prefix, index=current_index + i,
+                           hash=rng.randint(1e4), format=self.save_format)
                 img = batch_x[i]
                 if self.dim_ordering == 'th':
                     img = img.reshape((img.shape[1], img.shape[2]))
                 else:
                     img = img.reshape((img.shape[0], img.shape[1]))
+                # it seems only 8-bit images are supported.
                 cv2.imwrite(path.join(self.save_to_dir, fname), img)
         
         # build batch of labels
@@ -165,9 +176,11 @@ class DMExamListIterator(Iterator):
 
     def __init__(self, exam_list, image_data_generator,
                  target_size=(1152, 896), gs_255=False, dim_ordering='default',
-                 class_mode='binary', balance_classes=False, all_neg_skip=0.,
+                 class_mode='binary', validation_mode=False, prediction_mode=False, 
+                 balance_classes=False, all_neg_skip=0.,
                  batch_size=16, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
+
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
         self.image_data_generator = image_data_generator
@@ -184,6 +197,12 @@ class DMExamListIterator(Iterator):
                              '; expected one of "categorical", '
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
+        self.validation_mode = validation_mode
+        self.prediction_mode = prediction_mode
+        if validation_mode or prediction_mode:
+            shuffle = False
+            balance_classes = False
+            all_neg_skip = 0.
         self.balance_classes = balance_classes
         self.all_neg_skip = all_neg_skip
         self.seed = seed
@@ -198,7 +217,7 @@ class DMExamListIterator(Iterator):
         # For each exam: 0 => subj id, 1 => exam idx, 2 => exam dat.
         self.classes = [ (e[2]['L']['cancer'], e[2]['R']['cancer']) 
                          for e in exam_list ]
-        self.classes = np.array(self.classes)
+        self.classes = np.array(self.classes)  # (exams, breasts)
         print('For left breasts, normal=%d, cancer=%d, unimaged=%d.' % 
             (np.sum(self.classes[:, 0] == 0), 
              np.sum(self.classes[:, 0] == 1), 
@@ -232,23 +251,37 @@ class DMExamListIterator(Iterator):
             ratio = float(self.balance_classes)  # neg vs. pos.
             index_array = index_balancer(index_array, classes_, ratio, rng)
 
-        # The transformation of images is not under thread lock so it can be done in parallel
-        # nb_unimaged = np.sum(np.isnan(self.classes[index_array, :]))
         # batch size measures the number of exams, an exam has two breasts.
-        # current_batch_size = current_batch_size*2 - nb_unimaged
         current_batch_size = current_batch_size*2
-        batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
-        batch_x_mlo = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
 
-        def rand_draw_img(img_df, exam=None):
-            '''Randomly read an image when there is repeated imaging
+        # The transformation of images is not under thread lock so it can be done in parallel
+        if self.prediction_mode:
+            batch_x_cc = []  # a list (of breasts) of lists of image arrays.
+            batch_x_mlo = []
+        else:
+            batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
+            batch_x_mlo = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
+
+        def draw_img(img_df, exam=None):
+            '''Read image(s) based on different modes
+            Returns: a single image array or a list of image arrays
             '''
             try:
-                fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
-                img = read_resize_img(fname, self.target_size, self.gs_255)
+                if self.prediction_mode:
+                    img = []
+                    for fname in img_df['filename']:
+                        img.append(read_resize_img(fname, self.target_size, self.gs_255))
+                    if len(img) == 0:
+                        raise ValueError('empty image dataframe')
+                else:
+                    if self.validation_mode:
+                        fname = img_df['filename'].iloc[0]  # read the canonical view.
+                    else:  # training mode.
+                        fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
+                    img = read_resize_img(fname, self.target_size, self.gs_255)
             except ValueError:
                 if self.err_counter < 10:
-                    print "Error encountered sampling an image dataframe:", 
+                    print "Error encountered reading an image dataframe:", 
                     print img_df, "Use a blank image instead."
                     print "Exam caused trouble:", exam
                     self.err_counter += 1
@@ -264,66 +297,125 @@ class DMExamListIterator(Iterator):
             if breast_dat['CC'] is None:
                 img_cc = np.zeros(self.target_size, dtype='float32')
             else:
-                img_cc = rand_draw_img(breast_dat['CC'], **kwargs)
+                img_cc = draw_img(breast_dat['CC'], **kwargs)
             if breast_dat['MLO'] is None:
                 img_mlo = np.zeros(self.target_size, dtype='float32')
             else:
-                img_mlo = rand_draw_img(breast_dat['MLO'], **kwargs)
-            # Always have one channel.
-            if self.dim_ordering == 'th':
-                img_cc = img_cc.reshape((1, img_cc.shape[0], img_cc.shape[1]))
-                img_mlo = img_mlo.reshape((1, img_mlo.shape[0], img_mlo.shape[1]))
-            else:
-                img_cc = img_cc.reshape((img_cc.shape[0], img_cc.shape[1], 1))
-                img_mlo = img_mlo.reshape((img_mlo.shape[0], img_mlo.shape[1], 1))
+                img_mlo = draw_img(breast_dat['MLO'], **kwargs)
+            # Convert all to lists of image arrays.
+            if not isinstance(img_cc, list):
+                img_cc = [img_cc]
+            if not isinstance(img_mlo, list):
+                img_mlo = [img_mlo]
+            # Reshape each image array in the image lists.
+            for i, img_cc_ in enumerate(img_cc):
+                # Always have one channel.
+                if self.dim_ordering == 'th':
+                    img_cc[i] = img_cc_.reshape((1, img_cc_.shape[0], img_cc_.shape[1]))
+                else:
+                    img_cc[i] = img_cc_.reshape((img_cc_.shape[0], img_cc_.shape[1], 1))
+            for i, img_mlo_ in enumerate(img_mlo):
+                if self.dim_ordering == 'th':
+                    img_mlo[i] = img_mlo_.reshape((1, img_mlo_.shape[0], img_mlo_.shape[1]))
+                else:
+                    img_mlo[i] = img_mlo_.reshape((img_mlo_.shape[0], img_mlo_.shape[1], 1))
+            # Only predictin mode needs lists of image arrays.
+            if not self.prediction_mode:
+                img_cc = img_cc[0]
+                img_mlo = img_mlo[0]
 
             return (img_cc, img_mlo)
             
         # build batch of image data
         adv = 0
-        last_eidx = None
+        # last_eidx = None
         for eidx in index_array:
-            last_eidx = eidx  # no copying because sampling a diff img is expected.
+            # last_eidx = eidx  # no copying because sampling a diff img is expected.
             exam_dat = self.exam_list[eidx][2]
-            # if not np.isnan(self.classes[eidx, 0]):
-            img_cc, img_mlo = read_breast_imgs(exam_dat['L'], 
-                                               exam=self.exam_list[eidx])
-            batch_x_cc[adv] = img_cc
-            batch_x_mlo[adv] = img_mlo
-            adv += 1
-            # if not np.isnan(self.classes[eidx, 1]):
-            img_cc, img_mlo = read_breast_imgs(exam_dat['R'], 
-                                               exam=self.exam_list[eidx])
-            batch_x_cc[adv] = img_cc
-            batch_x_mlo[adv] = img_mlo
-            adv += 1
+
+            img_cc, img_mlo = read_breast_imgs(exam_dat['L'], exam=self.exam_list[eidx])
+            if not self.prediction_mode:
+                batch_x_cc[adv] = img_cc
+                batch_x_mlo[adv] = img_mlo
+                adv += 1
+            else:
+                batch_x_cc.append(img_cc)
+                batch_x_mlo.append(img_mlo)
+
+            img_cc, img_mlo = read_breast_imgs(exam_dat['R'], exam=self.exam_list[eidx])
+            if not self.prediction_mode:
+                batch_x_cc[adv] = img_cc
+                batch_x_mlo[adv] = img_mlo
+                adv += 1
+            else:
+                batch_x_cc.append(img_cc)
+                batch_x_mlo.append(img_mlo)
+
         # transform and standardize.
         for i in xrange(current_batch_size):
-            if not np.all(batch_x_cc[i] == 0):
-                batch_x_cc[i] = self.image_data_generator.random_transform(batch_x_cc[i])
-                batch_x_cc[i] = self.image_data_generator.standardize(batch_x_cc[i])
-                batch_x_mlo[i] = self.image_data_generator.random_transform(batch_x_mlo[i])
-                batch_x_mlo[i] = self.image_data_generator.standardize(batch_x_mlo[i])
+            if self.prediction_mode:
+                for ii, img_cc_ in enumerate(batch_x_cc[i]):
+                    if not np.all(img_cc_ == 0):
+                        batch_x_cc[i][ii] = \
+                            self.image_data_generator.standardize(img_cc_)
+                for ii, img_mlo_ in enumerate(batch_x_mlo[i]):
+                    if not np.all(img_mlo_ == 0):
+                        batch_x_mlo[i][ii] = \
+                            self.image_data_generator.standardize(img_mlo_)
+            else:
+                if not np.all(batch_x_cc[i] == 0):
+                    if not self.validation_mode:
+                        batch_x_cc[i] = self.image_data_generator.\
+                            random_transform(batch_x_cc[i])
+                    batch_x_cc[i] = self.image_data_generator.\
+                        standardize(batch_x_cc[i])
+                if not np.all(batch_x_mlo[i] == 0):
+                    if not self.validation_mode:
+                        batch_x_mlo[i] = self.image_data_generator.\
+                            random_transform(batch_x_mlo[i])
+                    batch_x_mlo[i] = self.image_data_generator.\
+                        standardize(batch_x_mlo[i])
 
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
-            for i in xrange(current_batch_size):
-                fname_base = '{prefix}_{index}_{hash}'.format(prefix=self.save_prefix,
-                                                              index=current_index*2 + i,
-                                                              hash=rng.randint(1e4))
-                fname_cc = fname_base + '_cc.' + self.save_format
-                fname_mlo = fname_base + '_mlo.' + self.save_format
-                img_cc = batch_x_cc[i]
-                img_mlo = batch_x_mlo[i]
-                if self.dim_ordering == 'th':
-                    img_cc = img_cc.reshape((img_cc.shape[1], img_cc.shape[2]))
-                    img_mlo = img_mlo.reshape((img_mlo.shape[1], img_mlo.shape[2]))
+            def save_aug_img(img, bi, view, ii=None):
+                '''Save an augmented image
+                Args:
+                    img (array): image array.
+                    bi (int): breast index.
+                    view (str): view name.
+                    ii ([int]): (within breast) image index.
+                '''
+                if not self.prediction_mode:
+                    fname_base = '{prefix}_{index}_{view}_{hash}'.\
+                        format(prefix=self.save_prefix, index=bi, view=view, 
+                               hash=rng.randint(1e4))
                 else:
-                    img_cc = img_cc.reshape((img_cc.shape[0], img_cc.shape[1]))
-                    img_mlo = img_mlo.reshape((img_mlo.shape[0], img_mlo.shape[1]))
-                cv2.imwrite(path.join(self.save_to_dir, fname_cc), img_cc)
-                cv2.imwrite(path.join(self.save_to_dir, fname_mlo), img_mlo)
+                    fname_base = '{prefix}_{bi}_{view}_{ii}_{hash}'.\
+                        format(prefix=self.save_prefix, bi=bi, view=view, ii=ii,
+                               hash=rng.randint(1e4))
+                fname = fname_base + '.' + self.save_format
+                if self.dim_ordering == 'th':
+                    img = img.reshape((img.shape[1], img.shape[2]))
+                else:
+                    img = img.reshape((img.shape[0], img.shape[1]))
+                # it seems only 8-bit images are supported.
+                cv2.imwrite(path.join(self.save_to_dir, fname), img)
+
+
+            for i in xrange(current_batch_size):
+                if not self.prediction_mode:
+                    img_cc = batch_x_cc[i]
+                    img_mlo = batch_x_mlo[i]
+                    save_aug_img(img_cc, current_index*2 + i, 'cc')
+                    save_aug_img(img_mlo, current_index*2 + i, 'mlo')
+                else:
+                    for ii, img_cc_ in enumerate(batch_x_cc[i]):
+                        save_aug_img(img_cc_, current_index*2 + i, 'cc', ii)
+                    for ii, img_mlo_ in enumerate(batch_x_mlo[i]):
+                        save_aug_img(img_mlo_, current_index*2 + i, 'mlo', ii)
         
+
         # build batch of labels
         flat_classes = self.classes[index_array, :].ravel()  # [L, R, L, R, ...]
         # flat_classes = flat_classes[np.logical_not(np.isnan(flat_classes))]
@@ -334,9 +426,18 @@ class DMExamListIterator(Iterator):
             batch_y = flat_classes.astype('float32')
         elif self.class_mode == 'categorical':
             batch_y = to_categorical(flat_classes, self.nb_class)
-        else:
+        else:  # class_mode is None.
             return [batch_x_cc, batch_x_mlo]
         return [batch_x_cc, batch_x_mlo], batch_y
+        #### An illustration of what is returned in prediction mode: ####
+        # let exam_blob = next(pred_datgen_exam)
+        #
+        # then           exam_blob[0][0][0][0]
+        #                          /  |   \  \
+        #                         /   |    \  \
+        #                        /    |     \  \--- 1st img
+        #                       img   cc    1st
+        #                      tuple view  breast
 
 
 class DMImageDataGenerator(ImageDataGenerator):
@@ -386,12 +487,14 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_img_list(self, img_list, lab_list, 
                            target_size=(1152, 896), gs_255=False, class_mode='binary',
+                           validation_mode=False,
                            balance_classes=False, all_neg_skip=0., 
                            batch_size=32, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMImgListIterator(
             img_list, lab_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
+            validation_mode=validation_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip,
             dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
@@ -399,13 +502,15 @@ class DMImageDataGenerator(ImageDataGenerator):
 
 
     def flow_from_exam_list(self, exam_list, 
-                           target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           balance_classes=False, all_neg_skip=0., 
-                           batch_size=16, shuffle=True, seed=None,
-                           save_to_dir=None, save_prefix='', save_format='jpeg'):
+                            target_size=(1152, 896), gs_255=False, class_mode='binary',
+                            validation_mode=False, prediction_mode=False,
+                            balance_classes=False, all_neg_skip=0., 
+                            batch_size=16, shuffle=True, seed=None,
+                            save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMExamListIterator(
             exam_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
+            validation_mode=validation_mode, prediction_mode=prediction_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip, 
             dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,

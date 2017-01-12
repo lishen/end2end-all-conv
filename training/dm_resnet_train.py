@@ -63,46 +63,37 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
             stratify=lab_list)
         val_size_ = len(img_val)
 
-    train_img_gen = DMImageDataGenerator(
+    img_gen = DMImageDataGenerator(
         horizontal_flip=True, 
         vertical_flip=True)
-    val_img_gen = DMImageDataGenerator()
     if do_featurewise_norm:
-        train_img_gen.featurewise_center = True
-        train_img_gen.featurewise_std_normalization = True
-        val_img_gen.featurewise_center = True
-        val_img_gen.featurewise_std_normalization = True
-        train_img_gen.mean = featurewise_mean
-        train_img_gen.std = featurewise_std
-        val_img_gen.mean = featurewise_mean
-        val_img_gen.std = featurewise_std
+        img_gen.featurewise_center = True
+        img_gen.featurewise_std_normalization = True
+        img_gen.mean = featurewise_mean
+        img_gen.std = featurewise_std
     else:
-        train_img_gen.samplewise_center = True
-        train_img_gen.samplewise_std_normalization = True
-        val_img_gen.samplewise_center = True
-        val_img_gen.samplewise_std_normalization = True
+        img_gen.samplewise_center = True
+        img_gen.samplewise_std_normalization = True
 
     if multi_view:
-        train_generator = train_img_gen.flow_from_exam_list(
+        train_generator = img_gen.flow_from_exam_list(
             exam_train, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
-        val_generator = val_img_gen.flow_from_exam_list(
+        val_generator = img_gen.flow_from_exam_list(
             exam_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=False, 
-            all_neg_skip=False, shuffle=False, seed=random_seed, 
+            batch_size=batch_size, validation_mode=True, 
             class_mode='binary')
     else:
-        train_generator = train_img_gen.flow_from_img_list(
+        train_generator = img_gen.flow_from_img_list(
             img_train, lab_train, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
-        val_generator = val_img_gen.flow_from_img_list(
+        val_generator = img_gen.flow_from_img_list(
             img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, balance_classes=False, 
-            all_neg_skip=False, shuffle=False, seed=random_seed,
+            batch_size=batch_size, validation_mode=True,
             class_mode='binary')
 
     # Create model.
