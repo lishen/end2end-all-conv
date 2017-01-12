@@ -22,8 +22,8 @@ import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
-def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
-        do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
+def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
+        do_featurewise_norm=True, featurewise_mean=485.9, featurewise_std=765.2, 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, all_neg_skip=0., pos_cls_weight=1.0,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
@@ -38,8 +38,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     '''Run ResNet training on mammograms using an exam or image list
     Args:
         featurewise_mean, featurewise_std ([float]): they are estimated from 
-                1152 x 896 pngs. Using different sized pngs give very close
-                results.
+                1152 x 896 images. Using different sized images give very close
+                results. For png, mean=7772, std=12187.
     '''
 
     # Read some env variables.
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="DM ResNet training")
     parser.add_argument("img_folder", type=str)
     parser.add_argument("--img-extension", "-ext", dest="img_extension", 
-                        type=str, default="png")
+                        type=str, default="dcm")
     parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, 
                         default=[288, 224])
     parser.add_argument("--multi-view", dest="multi_view", action="store_true")
@@ -208,9 +208,9 @@ if __name__ == '__main__':
     parser.add_argument("--no-featurewise-norm", dest="do_featurewise_norm", action="store_false")
     parser.set_defaults(do_featurewise_norm=True)
     parser.add_argument("--featurewise-mean", "-feam", dest="featurewise_mean", 
-                        type=float, default=7772.)
+                        type=float, default=485.9)
     parser.add_argument("--featurewise-std", "-feas", dest="featurewise_std", 
-                        type=float, default=12187.)
+                        type=float, default=765.2)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
