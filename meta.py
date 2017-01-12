@@ -147,6 +147,9 @@ class DMMetaManager(object):
                     continue
                 if info[breast][view_] is None:
                     info[breast][view_] = fname_df
+                elif view == 'CC' or view == 'MLO':
+                    # Make sure canonical views are always on top.
+                    info[breast][view_] = fname_df.append(info[breast][view_])
                 else:
                     info[breast][view_] = info[breast][view_].append(fname_df)
 
