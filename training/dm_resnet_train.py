@@ -30,7 +30,7 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
         pool_size=3, pool_stride=2, weight_decay=.0001, alpha=1., l1_ratio=.5, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, lr_patience=5, es_patience=10, 
-        resume_from=None, net='resnet50',
+        resume_from=None, net='resnet50', load_val_ram=False,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_resnet_best_model.h5',
@@ -48,6 +48,7 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
     gpu_count = int(os.getenv('NUM_GPU_DEVICES', 1))
     
     # Setup training and validation data.
+    # Load image or exam lists and split them into train and val sets.
     meta_man = DMMetaManager(exam_tsv=exam_tsv, img_tsv=img_tsv, 
                              img_folder=img_folder, img_extension=img_extension)
     if multi_view:
@@ -63,6 +64,7 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
             stratify=lab_list)
         val_size_ = len(img_val)
 
+    # Create image generator.
     img_gen = DMImageDataGenerator(
         horizontal_flip=True, 
         vertical_flip=True)
@@ -81,20 +83,41 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
-        val_generator = img_gen.flow_from_exam_list(
-            exam_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, validation_mode=True, 
-            class_mode='binary')
+        if load_val_ram:
+            val_generator = img_gen.flow_from_exam_list(
+                exam_val, target_size=(img_size[0], img_size[1]), 
+                batch_size=val_size_, validation_mode=True, 
+                class_mode='binary')
+        else:
+            val_generator = img_gen.flow_from_exam_list(
+                exam_val, target_size=(img_size[0], img_size[1]), 
+                batch_size=batch_size, validation_mode=True, 
+                class_mode='binary')
     else:
         train_generator = img_gen.flow_from_img_list(
             img_train, lab_train, target_size=(img_size[0], img_size[1]), 
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
-        val_generator = img_gen.flow_from_img_list(
-            img_val, lab_val, target_size=(img_size[0], img_size[1]), 
-            batch_size=batch_size, validation_mode=True,
-            class_mode='binary')
+        if load_val_ram:
+            val_generator = img_gen.flow_from_img_list(
+                img_val, lab_val, target_size=(img_size[0], img_size[1]), 
+                batch_size=val_size_, validation_mode=True,
+                class_mode='binary')
+        else:
+            val_generator = img_gen.flow_from_img_list(
+                img_val, lab_val, target_size=(img_size[0], img_size[1]), 
+                batch_size=batch_size, validation_mode=True,
+                class_mode='binary')
+
+    # Load validation set into RAM.
+    if load_val_ram:
+        validation_set = next(val_generator)
+        if not multi_view and len(validation_set[0]) != val_size_:
+            raise Exception
+        elif len(validation_set[0][0]) != val_size_ \
+                or len(validation_set[0][1]) != val_size_:
+            raise Exception
 
     # Create model.
     if resume_from is not None:
@@ -168,7 +191,7 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
         samples_per_epoch=samples_per_epoch, 
         nb_epoch=nb_epoch,
         class_weight={ 0: 1.0, 1: pos_cls_weight },
-        validation_data=val_generator, 
+        validation_data=validation_set if load_val_ram else val_generator, 
         nb_val_samples=val_size_, 
         callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
         nb_worker=nb_worker, 
@@ -235,6 +258,9 @@ if __name__ == '__main__':
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
     parser.add_argument("--resume-from", "-rf", dest="resume_from", type=str, default=None)
     parser.add_argument("--net", dest="net", type=str, default="resnet50")
+    parser.add_argument("--loadval-ram", dest="load_val_ram", action="store_true")
+    parser.add_argument("--no-loadval-ram", dest="load_val_ram", action="store_false")
+    parser.set_defaults(load_val_ram=False)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
@@ -274,6 +300,7 @@ if __name__ == '__main__':
         es_patience=args.es_patience,
         resume_from=args.resume_from,
         net=args.net,
+        load_val_ram=args.load_val_ram,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
