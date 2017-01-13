@@ -122,7 +122,13 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     dl_test_pred = dl_model.predict_generator(
             val_generator, val_samples=val_size_, nb_worker=nb_worker)
     dl_auc = roc_auc_score(y_test, dl_test_pred)
-    print "\nAUROC by the DL model:", dl_auc
+    dl_loss = log_loss(y_test, dl_test_pred)
+    print "\nAUROC by the DL model: %.4f, loss: %.4f" % (dl_auc, dl_loss)
+    # with open('dl_test_pred_2.npy', 'w') as f:
+    #     pickle.dump(dl_test_pred, f)
+    # with open('y_test_2.npy', 'w') as f:
+    #     pickle.dump(y_test, f)
+    # import pdb; pdb.set_trace()
 
     # Elastic net training.
     target_classes = np.array([0, 1])
