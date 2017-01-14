@@ -183,7 +183,12 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
-    auc_checkpointer = DMAucModelCheckpoint(best_model, val_generator, val_size_)
+    if load_val_ram:
+        auc_checkpointer = DMAucModelCheckpoint(best_model, validation_set, 
+                                                batch_size=batch_size)
+    else:
+        auc_checkpointer = DMAucModelCheckpoint(best_model, val_generator, 
+                                                nb_test_samples=val_size_)
     # checkpointer = ModelCheckpoint(
     #     best_model, monitor='val_loss', verbose=1, save_best_only=True)
     hist = model.fit_generator(
