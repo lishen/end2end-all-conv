@@ -115,19 +115,23 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     y_test = np.concatenate(y_list)
     del X_list
     del y_list
+    # import pdb; pdb.set_trace()
 
 
     # Evaluat DL model on the test data.
     val_generator.reset()
     dl_test_pred = dl_model.predict_generator(
-            val_generator, val_samples=val_size_, nb_worker=nb_worker)
+        val_generator, val_samples=val_size_, nb_worker=1, 
+        pickle_safe=False)
+    # Set nb_worker to >1 can cause:
+    # either inconsistent result when pickle_safe is False,
+    #     or broadcasting error when pickle_safe is True.
+    # This seems to be a Keras bug!!
+    # Further note: the broadcasting error may only happen when val_size_
+    # is not divisible by batch_size.
     dl_auc = roc_auc_score(y_test, dl_test_pred)
     dl_loss = log_loss(y_test, dl_test_pred)
     print "\nAUROC by the DL model: %.4f, loss: %.4f" % (dl_auc, dl_loss)
-    # with open('dl_test_pred_2.npy', 'w') as f:
-    #     pickle.dump(dl_test_pred, f)
-    # with open('y_test_2.npy', 'w') as f:
-    #     pickle.dump(y_test, f)
     # import pdb; pdb.set_trace()
 
     # Elastic net training.
