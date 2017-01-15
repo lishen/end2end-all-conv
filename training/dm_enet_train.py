@@ -22,6 +22,31 @@ import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
+def dlrepr_generator(repr_model, datgen, dat_size):
+    '''Obtain DL representations (and labels) from a generator
+    '''
+    # Setup test data in RAM.
+    X_list = []
+    y_list = []
+    samples_seen = 0
+    while samples_seen < dat_size:
+        ret = next(datgen)
+        if isinstance(ret, tuple):
+            X, y = ret
+            y_list.append(y)
+        else:
+            X = ret
+        X_repr = repr_model.predict_on_batch(X)
+        X_list.append(X_repr)
+        samples_seen += len(X_repr)
+    X_dat = np.concatenate(X_list)
+    if len(y_list) > 0:
+        y_dat = np.concatenate(y_list)
+        return X_dat, y_dat
+    else:
+        return X_dat
+
+
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
