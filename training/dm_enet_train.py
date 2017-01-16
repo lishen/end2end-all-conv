@@ -128,18 +128,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
 
 
     # Setup test data in RAM.
-    X_list = []
-    y_list = []
-    samples_seen = 0
-    while samples_seen < val_size_:
-        X, y = next(val_generator)
-        X_list.append(reprlayer_model.predict_on_batch(X))
-        y_list.append(y)
-        samples_seen += len(y)
-    X_test = np.concatenate(X_list)
-    y_test = np.concatenate(y_list)
-    del X_list
-    del y_list
+    X_test, y_test = dlrepr_generator(
+            reprlayer_model, val_generator, val_size_)
     # import pdb; pdb.set_trace()
 
 
@@ -170,15 +160,22 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     best_auc = 0.
     for epoch in xrange(nb_epoch):
         samples_seen = 0
-        # train_generator.reset()
+        X_list = []
+        y_list = []
         while samples_seen < samples_per_epoch:
             X, y = next(train_generator)
             X_repr = reprlayer_model.predict_on_batch(X)
             sgd_clf.partial_fit(X_repr, y, classes=target_classes)
             samples_seen += len(y)
+            X_list.append(X_repr)
+            y_list.append(y)
+        # The training X, y are expected to change for each epoch due to
+        # image random sampling and class balancing.
+        X_train_epo = np.concatenate(X_list)
+        y_train_epo = np.concatenate(y_list)
         # End of epoch summary.
         pred_prob = sgd_clf.predict_proba(X_test)[:, 1]
-        # pred_lab = np.array(pred_prob > .5, dtype='int32')
+        train_prob = sgd_clf.predict_proba(X_train_epo)[:, 1]
         auc = roc_auc_score(y_test, pred_prob)
         if auc > best_auc:
             best_epoch = epoch + 1
@@ -187,11 +184,11 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
                 with open(best_model, 'w') as best_state:
                     pickle.dump(sgd_clf, best_state)
         crossentropy_loss = log_loss(y_test, pred_prob)
-        # precision = precision_score(y_test, pred_lab)
-        # recall = recall_score(y_test, pred_lab)
+        train_loss = log_loss(y_train_epo, train_prob)
         wei_sparseness = np.mean(sgd_clf.coef_ == 0)
-        print ("Epoch=%d, auc=%.4f, loss=%.4f, weight sparsity=%.4f") % \
-            (epoch + 1, auc, crossentropy_loss, wei_sparseness)
+        print ("Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
+               "weight sparsity=%.4f") % \
+            (epoch + 1, auc, train_loss, crossentropy_loss, wei_sparseness)
     # End of training summary
     print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
         (best_auc, best_epoch, best_model)
