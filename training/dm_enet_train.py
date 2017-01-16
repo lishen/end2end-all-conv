@@ -49,9 +49,9 @@ def dlrepr_generator(repr_model, datgen, dat_size):
 
 def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         do_featurewise_norm=True, featurewise_mean=7772., featurewise_std=12187., 
-        batch_size=16, samples_per_epoch=160, nb_epoch=20, 
+        batch_size=16, samples_per_epoch=160, nb_epoch=20, val_size=.2,
         balance_classes=0., all_neg_skip=False, pos_cls_weight=1.0,
-        alpha=1., l1_ratio=.5, init_lr=.01, power_t=.25, val_size=.2, 
+        alpha=1., l1_ratio=.5, init_lr=.01, lr_patience=2, es_patience=4,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         dl_state='./modelState/resnet50_288_best_model.h5',
@@ -153,11 +153,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     target_classes = np.array([0, 1])
     sgd_clf = SGDClassifier(
         loss='log', penalty='elasticnet', alpha=alpha, l1_ratio=l1_ratio, 
-        verbose=0, n_jobs=nb_worker, learning_rate='invscaling', eta0=init_lr, 
-        power_t=power_t)
-
+        verbose=0, n_jobs=nb_worker, learning_rate='constant', eta0=init_lr)
+    curr_lr = init_lr
     best_epoch = 0
     best_auc = 0.
+    min_loss = np.inf
+    min_loss_epoch = 0
     for epoch in xrange(nb_epoch):
         samples_seen = 0
         X_list = []
@@ -189,10 +190,22 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         print ("Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
                "weight sparsity=%.4f") % \
             (epoch + 1, auc, train_loss, crossentropy_loss, wei_sparseness)
+        if crossentropy_loss < min_loss:
+            min_loss = crossentropy_loss
+            min_loss_epoch = epoch + 1
+        else:
+            if epoch + 1 - min_loss_epoch >= lr_patience:
+                curr_lr *= .1
+                sgd_clf.set_params(eta0=curr_lr)
+                print "Reducing learning rate to: %s" % (curr_lr)
+            if epoch + 1 - min_loss_epoch >= es_patience:
+                print 'Early stopping criterion has reached. Stop training.'
+                break
     # End of training summary
     print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
         (best_auc, best_epoch, best_model)
-
+    print ">>> Found best val loss: %.4f at epoch: %d. <<<" % \
+        (min_loss, min_loss_epoch) 
     #### Save elastic net model!! ####
     if final_model != "NOSAVE":
         with open(final_model, 'w') as final_state:
@@ -227,6 +240,8 @@ if __name__ == '__main__':
     parser.add_argument("--alpha", dest="alpha", type=float, default=1.)
     parser.add_argument("--l1-ratio", dest="l1_ratio", type=float, default=.5)
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
+    parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=2)
+    parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=4)
     parser.add_argument("--power-t", "-pt", dest="power_t", type=float, default=.25)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
     # parser.add_argument("--resume-from", "-rf", dest="resume_from", type=str, default=None)
@@ -257,7 +272,8 @@ if __name__ == '__main__':
         alpha=args.alpha,
         l1_ratio=args.l1_ratio,
         init_lr=args.init_lr,
-        power_t=args.power_t,
+        lr_patience=args.lr_patience,
+        es_patience=args.es_patience,
         val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
         # resume_from=args.resume_from,
         exam_tsv=args.exam_tsv,
