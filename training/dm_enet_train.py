@@ -153,7 +153,8 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     target_classes = np.array([0, 1])
     sgd_clf = SGDClassifier(
         loss='log', penalty='elasticnet', alpha=alpha, l1_ratio=l1_ratio, 
-        verbose=0, n_jobs=nb_worker, learning_rate='constant', eta0=init_lr)
+        verbose=0, n_jobs=nb_worker, learning_rate='constant', eta0=init_lr,
+        random_state=random_seed, class_weight={0: 1.0, 1: pos_cls_weight})
     curr_lr = init_lr
     best_epoch = 0
     best_auc = 0.
