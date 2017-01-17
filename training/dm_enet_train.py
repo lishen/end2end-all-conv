@@ -1,5 +1,6 @@
 import os, argparse
 import pickle
+import time
 import numpy as np
 from numpy.random import RandomState
 from sklearn.linear_model import SGDClassifier
@@ -168,6 +169,7 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         samples_seen = 0
         X_list = []
         y_list = []
+        epoch_start = time.time()
         while samples_seen < samples_per_epoch:
             X, y = next(train_generator)
             X_repr = reprlayer_model.predict_on_batch(X)
@@ -193,9 +195,11 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         except ValueError:
             train_loss = np.inf
         wei_sparseness = np.mean(sgd_clf.coef_ == 0)
-        print ("Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
+        epoch_span = time.time() - epoch_start
+        print ("%ds - Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
                "weight sparsity=%.4f") % \
-            (epoch + 1, auc, train_loss, crossentropy_loss, wei_sparseness)
+            (epoch_span, epoch + 1, auc, train_loss, crossentropy_loss, 
+             wei_sparseness)
         # Model checkpoint, reducing learning rate and early stopping.
         if auc > best_auc:
             best_epoch = epoch + 1
