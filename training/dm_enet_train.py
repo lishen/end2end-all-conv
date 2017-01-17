@@ -144,8 +144,12 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
     # This seems to be a Keras bug!!
     # Further note: the broadcasting error may only happen when val_size_
     # is not divisible by batch_size.
-    dl_auc = roc_auc_score(y_test, dl_test_pred)
-    dl_loss = log_loss(y_test, dl_test_pred)
+    try:
+        dl_auc = roc_auc_score(y_test, dl_test_pred)
+        dl_loss = log_loss(y_test, dl_test_pred)
+    except ValueError:
+        dl_auc = 0.
+        dl_loss = np.inf
     print "\nAUROC by the DL model: %.4f, loss: %.4f" % (dl_auc, dl_loss)
     # import pdb; pdb.set_trace()
 
@@ -178,30 +182,38 @@ def run(img_folder, img_extension='png', img_size=[288, 224], multi_view=False,
         # End of epoch summary.
         pred_prob = sgd_clf.predict_proba(X_test)[:, 1]
         train_prob = sgd_clf.predict_proba(X_train_epo)[:, 1]
-        auc = roc_auc_score(y_test, pred_prob)
+        try:
+            auc = roc_auc_score(y_test, pred_prob)
+            crossentropy_loss = log_loss(y_test, pred_prob)
+        except ValueError:
+            auc = 0.
+            crossentropy_loss = np.inf
+        try:
+            train_loss = log_loss(y_train_epo, train_prob)
+        except ValueError:
+            train_loss = np.inf
+        wei_sparseness = np.mean(sgd_clf.coef_ == 0)
+        print ("Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
+               "weight sparsity=%.4f") % \
+            (epoch + 1, auc, train_loss, crossentropy_loss, wei_sparseness)
+        # Model checkpoint, reducing learning rate and early stopping.
         if auc > best_auc:
             best_epoch = epoch + 1
             best_auc = auc
             if best_model != "NOSAVE":
                 with open(best_model, 'w') as best_state:
                     pickle.dump(sgd_clf, best_state)
-        crossentropy_loss = log_loss(y_test, pred_prob)
-        train_loss = log_loss(y_train_epo, train_prob)
-        wei_sparseness = np.mean(sgd_clf.coef_ == 0)
-        print ("Epoch=%d, auc=%.4f, train_loss=%.4f, test_loss=%.4f, "
-               "weight sparsity=%.4f") % \
-            (epoch + 1, auc, train_loss, crossentropy_loss, wei_sparseness)
         if crossentropy_loss < min_loss:
             min_loss = crossentropy_loss
             min_loss_epoch = epoch + 1
         else:
+            if epoch + 1 - min_loss_epoch >= es_patience:
+                print 'Early stopping criterion has reached. Stop training.'
+                break
             if epoch + 1 - min_loss_epoch >= lr_patience:
                 curr_lr *= .1
                 sgd_clf.set_params(eta0=curr_lr)
                 print "Reducing learning rate to: %s" % (curr_lr)
-            if epoch + 1 - min_loss_epoch >= es_patience:
-                print 'Early stopping criterion has reached. Stop training.'
-                break
     # End of training summary
     print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
         (best_auc, best_epoch, best_model)
