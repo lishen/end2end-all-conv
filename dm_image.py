@@ -218,12 +218,12 @@ class DMExamListIterator(Iterator):
         self.classes = [ (e[2]['L']['cancer'], e[2]['R']['cancer']) 
                          for e in exam_list ]
         self.classes = np.array(self.classes)  # (exams, breasts)
-        print('For left breasts, normal=%d, cancer=%d, unimaged=%d.' % 
+        print('For left breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
             (np.sum(self.classes[:, 0] == 0), 
              np.sum(self.classes[:, 0] == 1), 
              np.sum(np.isnan(self.classes[:, 0])))
             )
-        print('For right breasts, normal=%d, cancer=%d, unimaged=%d.' % 
+        print('For right breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
             (np.sum(self.classes[:, 1] == 0), 
              np.sum(self.classes[:, 1] == 1), 
              np.sum(np.isnan(self.classes[:, 1])))
@@ -258,6 +258,7 @@ class DMExamListIterator(Iterator):
         if self.prediction_mode:
             batch_x_cc = []  # a list (of breasts) of lists of image arrays.
             batch_x_mlo = []
+            batch_subj = []
         else:
             batch_x_cc = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
             batch_x_mlo = np.zeros( (current_batch_size,) + self.image_shape, dtype='float32' )
@@ -331,6 +332,7 @@ class DMExamListIterator(Iterator):
         # last_eidx = None
         for eidx in index_array:
             # last_eidx = eidx  # no copying because sampling a diff img is expected.
+            subj_id = self.exam_list[eidx][0]
             exam_dat = self.exam_list[eidx][2]
 
             img_cc, img_mlo = read_breast_imgs(exam_dat['L'], exam=self.exam_list[eidx])
@@ -339,6 +341,8 @@ class DMExamListIterator(Iterator):
                 batch_x_mlo[adv] = img_mlo
                 adv += 1
             else:
+                # left_cc = img_cc
+                # left_mlo = img_mlo
                 batch_x_cc.append(img_cc)
                 batch_x_mlo.append(img_mlo)
 
@@ -348,8 +352,11 @@ class DMExamListIterator(Iterator):
                 batch_x_mlo[adv] = img_mlo
                 adv += 1
             else:
+                # right_cc = img_cc
+                # right_mlo = img_mlo
                 batch_x_cc.append(img_cc)
                 batch_x_mlo.append(img_mlo)
+                batch_subj.append(subj_id)
 
         # transform and standardize.
         for i in xrange(current_batch_size):
@@ -427,17 +434,25 @@ class DMExamListIterator(Iterator):
         elif self.class_mode == 'categorical':
             batch_y = to_categorical(flat_classes, self.nb_class)
         else:  # class_mode is None.
-            return [batch_x_cc, batch_x_mlo]
-        return [batch_x_cc, batch_x_mlo], batch_y
+            if self.prediction_mode:
+                return [batch_subj, batch_x_cc, batch_x_mlo]
+            else:
+                return [batch_x_cc, batch_x_mlo]
+        if self.prediction_mode:
+            return [batch_subj, batch_x_cc, batch_x_mlo], batch_y
+        else:
+            return [batch_x_cc, batch_x_mlo], batch_y
         #### An illustration of what is returned in prediction mode: ####
         # let exam_blob = next(pred_datgen_exam)
         #
-        # then           exam_blob[0][0][0][0]
+        # then           exam_blob[0][1][0][0]
         #                          /  |   \  \
         #                         /   |    \  \
         #                        /    |     \  \--- 1st img
         #                       img   cc    1st
         #                      tuple view  breast
+        #
+        # if class_mode is None, then the first index is not needed.
 
 
 class DMImageDataGenerator(ImageDataGenerator):
