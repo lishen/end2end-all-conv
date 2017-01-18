@@ -2,6 +2,7 @@ metadata
 modelState
 output
 trainingData
+inferenceData
 preprocessedData
 nohup.out
 *.sublime-*
