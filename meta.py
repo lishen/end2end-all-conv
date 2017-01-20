@@ -225,6 +225,178 @@ class DMMetaManager(object):
                        prior_idx, subj_dat.loc[prior_idx])
 
 
+    def get_last_2_exam_dat(self):
+        '''Get the info about the last 2 exams as a dataframe
+        Returns: 
+            a tuple of (df, labs) where df is a dataframe of exam pair info 
+            for breasts; labs is the corresponding cancer labels.
+        '''
+        rec_list = []
+        lab_list = []
+        for subj_id, curr_idx, curr_dat, prior_idx, prior_dat in \
+                self.last_2_exam_generator():
+            # number of days since last exam.
+            nb_days = curr_dat['daysSincePreviousExam'].iloc[0]
+            # prior cancer invasive or not.
+            try:
+                left_prior_inv = prior_dat['invL'].iloc[0]
+            except TypeError:
+                left_prior_inv = np.nan
+            try:
+                right_prior_inv = prior_dat['invR'].iloc[0]
+            except TypeError:
+                right_prior_inv = np.nan
+            # current, prior and diff bmi.
+            curr_bmi = curr_dat['bmi'].iloc[0]
+            try:
+                prior_bmi = prior_dat['bmi'].iloc[0]
+                diff_bmi = (curr_bmi - prior_bmi)/nb_days*365
+            except TypeError:
+                prior_bmi = np.nan
+                diff_bmi = np.nan
+            # implantation.
+            implantNow = curr_dat['implantNow'].iloc[0]
+            if implantNow == 2 or implantNow == 4:
+                left_implantNow = 1
+            elif implantNow == 1 or implantNow == 4:
+                right_implantNow = 1
+            elif implantNow == 5:
+                left_implantNow = .5
+                right_implantNow = .5
+            else:
+                left_implantNow = np.nan
+                right_implantNow = np.nan
+            try:
+                implantPrior = prior_dat['implantNow'].iloc[0]
+                if implantPrior == 2 or implantPrior == 4:
+                    left_implantPrior = 1
+                elif implantPrior == 1 or implantPrior == 4:
+                    right_implantPrior = 1
+                elif implantPrior == 5:
+                    left_implantPrior = .5
+                    right_implantPrior = .5
+                else:
+                    left_implantPrior = np.nan
+                    right_implantPrior = np.nan
+            except TypeError:
+                left_implantPrior = np.nan
+                right_implantPrior = np.nan                
+            # previous breast cancer history.
+            previousBcLaterality = curr_dat['previousBcLaterality'].iloc[0]
+            if previousBcLaterality == 2:
+                left_previousBcHistory = 1
+            elif previousBcLaterality == 1:
+                right_previousBcHistory = 1
+            elif previousBcLaterality == 3:
+                left_previousBcHistory = .5
+                right_previousBcHistory = .5
+            elif previousBcLaterality == 4:
+                left_previousBcHistory = 1
+                right_previousBcHistory = 1
+            else:
+                left_previousBcHistory = 0
+                right_previousBcHistory = 0
+            # breast reduction history.
+            reduxLaterality = curr_dat['reduxLaterality'].iloc[0]
+            if reduxLaterality == 2:
+                left_reduxHistory = 1
+            elif reduxLaterality == 1:
+                right_reduxHistory = 1
+            elif reduxLaterality == 4:
+                left_reduxHistory = 1
+                right_reduxHistory = 1
+            else:
+                left_reduxHistory = 0
+                right_reduxHistory = 0
+            # hormone replacement therapy.
+            curr_hrt = curr_dat['hrt'].iloc[0]
+            curr_hrt = np.nan if curr_hrt == 9 else curr_hrt
+            try:
+                prior_hrt = prior_dat['hrt'].iloc[0]
+                prior_hrt = np.nan if prior_hrt == 9 else prior_hrt
+            except TypeError:
+                prior_hrt = np.nan
+            # anti-estrogen therapy.
+            curr_antiestrogen = curr_dat['antiestrogen'].iloc[0]
+            curr_antiestrogen = np.nan if curr_antiestrogen == 9 else curr_antiestrogen
+            try:
+                prior_antiestrogen = prior_dat['antiestrogen'].iloc[0]
+                prior_antiestrogen = np.nan if prior_antiestrogen == 9 else prior_antiestrogen
+            except TypeError:
+                prior_antiestrogen = np.nan
+            # first degree relative with BC.
+            firstDegreeWithBc = curr_dat['firstDegreeWithBc'].iloc[0]
+            firstDegreeWithBc = np.nan if firstDegreeWithBc == 9 else firstDegreeWithBc
+            # first degree relative with BC under 50.
+            firstDegreeWithBc50 = curr_dat['firstDegreeWithBc50'].iloc[0]
+            firstDegreeWithBc50 = np.nan if firstDegreeWithBc50 == 9 else firstDegreeWithBc50
+            # race.
+            race = curr_dat['race'].iloc[0]
+            race = np.nan if race == 9 else race
+
+            # put all info input a dict.
+            left_record = {
+                'daysSincePreviousExam': nb_days,
+                'prior_inv': left_prior_inv,
+                'age': curr_dat['age'].iloc[0],
+                'implantEver': curr_dat['implantEver'].iloc[0],
+                'implantNow': left_implantNow,
+                'implantPrior': left_implantPrior,
+                'previousBcHistory': left_previousBcHistory,
+                'yearsSincePreviousBc': curr_dat['yearsSincePreviousBc'].iloc[0],
+                'reduxHistory': left_reduxHistory,
+                'curr_hrt': curr_hrt,
+                'prior_hrt': prior_hrt,
+                'curr_antiestrogen': curr_antiestrogen,
+                'prior_antiestrogen': prior_antiestrogen,
+                'curr_bmi': curr_bmi,
+                'prior_bmi': prior_bmi,
+                'diff_bmi': diff_bmi,
+                'firstDegreeWithBc': firstDegreeWithBc,
+                'firstDegreeWithBc50': firstDegreeWithBc50,
+                'race': race
+            }
+            right_record = {
+                'daysSincePreviousExam': nb_days,
+                'prior_inv': right_prior_inv,
+                'age': curr_dat['age'].iloc[0],
+                'implantEver': curr_dat['implantEver'].iloc[0],
+                'implantNow': right_implantNow,
+                'implantPrior': right_implantPrior,
+                'previousBcHistory': right_previousBcHistory,
+                'yearsSincePreviousBc': curr_dat['yearsSincePreviousBc'].iloc[0],
+                'reduxHistory': right_reduxHistory,
+                'curr_hrt': curr_hrt,
+                'prior_hrt': prior_hrt,
+                'curr_antiestrogen': curr_antiestrogen,
+                'prior_antiestrogen': prior_antiestrogen,
+                'curr_bmi': curr_bmi,
+                'prior_bmi': prior_bmi,
+                'diff_bmi': diff_bmi,
+                'firstDegreeWithBc': firstDegreeWithBc,
+                'firstDegreeWithBc50': firstDegreeWithBc50,
+                'race': race
+            }
+            rec_list.append(pd.DataFrame(left_record, index=[0]))
+            rec_list.append(pd.DataFrame(right_record, index=[0]))
+
+            try:
+                left_cancer = int(curr_dat['cancerL'].iloc[0])
+            except ValueError:
+                left_cancer = np.nan
+            try:
+                right_cancer = int(curr_dat['cancerR'].iloc[0])
+            except ValueError:
+                right_cancer = np.nan
+            lab_list.append(left_cancer)
+            lab_list.append(right_cancer)
+
+        df = pd.concat(rec_list, ignore_index=True)
+        labs = np.array(lab_list)
+        
+        return df, labs
+
+
     def get_subj_list(self, meta=False):
         '''Get subject-level training data list
         Returns:
