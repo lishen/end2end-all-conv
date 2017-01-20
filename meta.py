@@ -27,13 +27,13 @@ class DMMetaManager(object):
             return path.join(img_folder, 
                              path.splitext(name)[0] + '.' + img_extension)
 
-        img_df = pd.read_csv(img_tsv, sep="\t")
+        img_df = pd.read_csv(img_tsv, sep="\t", na_values=['.', '*'])
         try:
             img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
         except KeyError:
             img_df_indexed = img_df.set_index(['subjectId'])
         if exam_tsv != "":
-            exam_df = pd.read_csv(exam_tsv, sep="\t")
+            exam_df = pd.read_csv(exam_tsv, sep="\t", na_values=['.', '*'])
             exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
             self.exam_img_df = exam_df_indexed.join(img_df_indexed)
             self.exam_img_df['filename'] = \
@@ -81,11 +81,10 @@ class DMMetaManager(object):
                 img_name = dat['filename']
                 laterality = dat['laterality']
                 cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
-                # No need to worry about the rows where cancer='.' because the 
-                # labels of '.' will not appear in the image list.
-                # For example, if cancerL = '.', laterality must be 'R' and 
-                # cancerR can't be '.', and vice versa.
-                cancer = int(cancer) if cancer != '*' else np.nan
+                try:
+                    cancer = int(cancer)
+                except ValueError:
+                    cancer = np.nan
                 img.append(img_name)
                 lab.append(cancer)
         except AttributeError:
@@ -120,8 +119,14 @@ class DMMetaManager(object):
         try:
             cancerL = exam_indexed['cancerL'].iloc[0]
             cancerR = exam_indexed['cancerR'].iloc[0]
-            cancerL = np.nan if cancerL == '.' or cancerL == '*' else int(cancerL)
-            cancerR = np.nan if cancerR == '.' or cancerR == '*' else int(cancerR)
+            try:
+                cancerL = int(cancerL)
+            except ValueError:
+                cancerL = np.nan
+            try:
+                cancerR = int(cancerR)
+            except ValueError:
+                cancerR = np.nan
         except KeyError:
             try:
                 cancerL = int(exam_indexed.loc['L']['cancer'].iloc[0])
