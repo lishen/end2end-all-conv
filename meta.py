@@ -68,6 +68,15 @@ class DMMetaManager(object):
             'MLO': 'MLO', 'LMO': 'MLO', 'MLOID': 'MLO', 'SIO': 'MLO'}
 
 
+    def get_exam_df(self):
+        '''Get exam dataframe
+        '''
+        try:
+            return self.exam_img_df
+        except AttributeError:
+            return self.img_df_indexed
+
+
     def get_flatten_img_list(self, meta=False):
         '''Get image-level training data list
         Args:
