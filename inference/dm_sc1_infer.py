@@ -3,6 +3,7 @@ import numpy as np
 from keras.models import load_model
 from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
+from dm_enet import MultiViewDLElasticNet
 
 import warnings
 import exceptions
@@ -12,7 +13,8 @@ warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 def run(img_folder, img_size=[288, 224], do_featurewise_norm=True, 
         featurewise_mean=485.9, featurewise_std=765.2, batch_size=16, 
         img_tsv='./metadata/images_crosswalk_prediction.tsv',
-        saved_state='./modelState/dm_resnet_best_model.h5',
+        dl_state=None,
+        enet_state=None,
         validation_mode=False, use_mean=False,
         out_pred='./output/predictions.tsv'):
     '''Run SC1 inference
@@ -59,9 +61,14 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
         preds = model.predict_on_batch([pred_cc, pred_mlo])
         return preds
 
-    model = load_model(saved_state)
+    if enet_state is not None:
+        model = MultiViewDLElasticNet(*enet_state)
+    elif dl_state is not None:
+        model = load_model(dl_state)
+    else:
+        raise Exception('At least one model state must be specified.')
     exams_seen = 0
-    fout = open('./output/predictions.tsv', 'w')
+    fout = open(out_pred, 'w')
 
     # Print header.
     if class_mode is not None:
@@ -85,11 +92,11 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
             left_preds = pred_2view_img_list(cc_list[li], mlo_list[li], model)
             right_preds = pred_2view_img_list(cc_list[ri], mlo_list[ri], model)
             if not use_mean:
-                left_pred = np.array(left_preds).max()
-                right_pred = np.array(right_preds).max()
+                left_pred = left_preds.max()
+                right_pred = right_preds.max()
             else:
-                left_pred = np.array(left_preds).mean()
-                right_pred = np.array(right_preds).mean()
+                left_pred = left_preds.mean()
+                right_pred = right_preds.mean()
             if class_mode is not None:
                 fout.write("%s\tL\t%f\t%f\n" % (str(subj), left_pred, bat_y[li]))
                 fout.write("%s\tR\t%f\t%f\n" % (str(subj), right_pred, bat_y[ri]))
@@ -118,8 +125,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
-    parser.add_argument("--saved-state", "-ss", dest="saved_state", type=str, 
-                        default="./modelState/dm_resnet_best_model.h5")
+    parser.add_argument("--dl-state", "-ds", dest="dl_state", type=str)
+    parser.add_argument("--enet-state", "-es", dest="enet_state", nargs=2, type=str)
     parser.add_argument("--validation-mode", dest="validation_mode", action="store_true")
     parser.add_argument("--no-validation-mode", dest="validation_mode", action="store_false")
     parser.set_defaults(validation_mode=False)
@@ -137,10 +144,12 @@ if __name__ == '__main__':
         featurewise_std=args.featurewise_std,
         batch_size=args.batch_size, 
         img_tsv=args.img_tsv,
-        saved_state=args.saved_state,
+        dl_state=args.dl_state,
+        enet_state=args.enet_state,
         validation_mode=args.validation_mode,
         use_mean=args.use_mean,
         out_pred=args.out_pred
     )
+    print "\n>>> Inference options: <<<\n", run_opts, "\n"
     run(args.img_folder, **run_opts)
 
