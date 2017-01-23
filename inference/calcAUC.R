@@ -25,9 +25,13 @@ GetScores <- function(label, prediction, sensitivityRange = c(0.8, 1)) {
 ##
 args <- commandArgs(T)
 pred.tbl <- read.table(args[1], sep="\t", header=T)
-scores = GetScores(pred.tbl$target, pred.tbl$confidence)
-cat("==========================================\n")
-cat(sprintf("AUC=%.4f, pAUC=%.4f, SpecAtSens=%.4f\n", 
-            scores$AUC, scores$pAUCse, scores$SpecAtSens))
-cat("==========================================\n")
+if(sum(pred.tbl$target == 1) == 0) {
+	cat("NO cancer cases, AUROC score was not calculated.\n")
+} else {
+	scores = GetScores(pred.tbl$target, pred.tbl$confidence)
+	cat("==========================================\n")
+	cat(sprintf("AUC=%.4f, pAUC=%.4f, SpecAtSens=%.4f\n", 
+	            scores$AUC, scores$pAUCse, scores$SpecAtSens))
+	cat("==========================================\n")	
+}
 
