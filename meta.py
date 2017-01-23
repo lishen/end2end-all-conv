@@ -32,7 +32,7 @@ class DMMetaManager(object):
             img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
         except KeyError:
             img_df_indexed = img_df.set_index(['subjectId'])
-        if exam_tsv != "":
+        if exam_tsv is not None:
             exam_df = pd.read_csv(exam_tsv, sep="\t", na_values=['.', '*'])
             exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
             self.exam_img_df = exam_df_indexed.join(img_df_indexed)

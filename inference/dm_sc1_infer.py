@@ -13,6 +13,7 @@ warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 def run(img_folder, img_size=[288, 224], do_featurewise_norm=True, 
         featurewise_mean=485.9, featurewise_std=765.2, batch_size=16, 
         img_tsv='./metadata/images_crosswalk_prediction.tsv',
+        exam_tsv=None,
         dl_state=None,
         enet_state=None,
         validation_mode=False, use_mean=False,
@@ -26,9 +27,12 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
 
     # Setup data generator for inference.
     meta_man = DMMetaManager(
-        img_tsv=img_tsv, exam_tsv="", img_folder=img_folder, 
+        img_tsv=img_tsv, exam_tsv=exam_tsv, img_folder=img_folder, 
         img_extension='dcm')
-    last_exam_list = meta_man.get_last_exam_list()
+    if validation_mode:
+        exam_list = meta_man.get_flatten_exam_list()
+    else:
+        exam_list = meta_man.get_last_exam_list()
     if do_featurewise_norm:
         img_gen = DMImageDataGenerator(featurewise_center=True, 
                                        featurewise_std_normalization=True)
@@ -42,7 +46,7 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
     else:
         class_mode = None
     datgen_exam = img_gen.flow_from_exam_list(
-        last_exam_list, target_size=(img_size[0], img_size[1]), 
+        exam_list, target_size=(img_size[0], img_size[1]), 
         class_mode=class_mode, prediction_mode=True, batch_size=batch_size)
 
 
@@ -71,40 +75,44 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
     fout = open(out_pred, 'w')
 
     # Print header.
-    if class_mode is not None:
-        fout.write("subjectId\tlaterality\tconfidence\ttarget\n")
+    if validation_mode:
+        fout.write("subjectId\texamIndex\tlaterality\tconfidence\ttarget\n")
     else:
         fout.write("subjectId\tlaterality\tconfidence\n")
 
-    while exams_seen < len(last_exam_list):
+    while exams_seen < len(exam_list):
         ebat = next(datgen_exam)
         if class_mode is not None:
             bat_x = ebat[0]
             bat_y = ebat[1]
         else:
             bat_x = ebat
-        subj_list = bat_x[0]
-        cc_list = bat_x[1]
-        mlo_list = bat_x[2]
-        for i, subj in enumerate(subj_list):
+        subj_batch = bat_x[0]
+        exam_batch = bat_x[1]
+        cc_batch = bat_x[2]
+        mlo_batch = bat_x[3]
+        for i, subj in enumerate(subj_batch):
+            exam = exam_batch[i]
             li = i*2        # left breast index.
             ri = i*2 + 1    # right breast index.
-            left_preds = pred_2view_img_list(cc_list[li], mlo_list[li], model)
-            right_preds = pred_2view_img_list(cc_list[ri], mlo_list[ri], model)
+            left_preds = pred_2view_img_list(cc_batch[li], mlo_batch[li], model)
+            right_preds = pred_2view_img_list(cc_batch[ri], mlo_batch[ri], model)
             if not use_mean:
                 left_pred = left_preds.max()
                 right_pred = right_preds.max()
             else:
                 left_pred = left_preds.mean()
                 right_pred = right_preds.mean()
-            if class_mode is not None:
-                fout.write("%s\tL\t%f\t%f\n" % (str(subj), left_pred, bat_y[li]))
-                fout.write("%s\tR\t%f\t%f\n" % (str(subj), right_pred, bat_y[ri]))
+            if validation_mode:
+                fout.write("%s\t%s\tL\t%f\t%f\n" % \
+                           (str(subj), str(exam), left_pred, bat_y[li]))
+                fout.write("%s\t%s\tR\t%f\t%f\n" % \
+                           (str(subj), str(exam), right_pred, bat_y[ri]))
             else:
                 fout.write("%s\tL\t%f\n" % (str(subj), left_pred))
                 fout.write("%s\tR\t%f\n" % (str(subj), right_pred))
 
-        exams_seen += len(subj_list)
+        exams_seen += len(subj_batch)
 
     fout.close()
 
@@ -125,6 +133,9 @@ if __name__ == '__main__':
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
+    parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str)
+    parser.add_argument("--no-exam-tsv", dest="exam_tsv", action="store_const", const=None)
+    parser.set_defaults(exam_tsv=None)
     parser.add_argument("--dl-state", "-ds", dest="dl_state", type=str)
     parser.add_argument("--enet-state", "-es", dest="enet_state", nargs=2, type=str)
     parser.add_argument("--validation-mode", dest="validation_mode", action="store_true")

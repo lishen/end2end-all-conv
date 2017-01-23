@@ -268,6 +268,7 @@ if __name__ == '__main__':
     parser.set_defaults(load_val_ram=False)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
                         default="./metadata/exams_metadata.tsv")
+    parser.add_argument("--no-exam-tsv", dest="exam_tsv", action="store_const", const=None)
     parser.add_argument("--img-tsv", "-it", dest="img_tsv", type=str, 
                         default="./metadata/images_crosswalk.tsv")
     parser.add_argument("--best-model", "-bm", dest="best_model", type=str, 
