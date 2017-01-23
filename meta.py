@@ -215,27 +215,49 @@ class DMMetaManager(object):
             yield (subj_id, last_idx, subj_dat.loc[last_idx])
 
 
-    def last_2_exam_generator(self):
-        '''A generator for the data of the last 2 exams of each subject
+    def flatten_2_exam_generator(self):
+        '''A generator for the data of the flatten 2 exams of each subject
         Returns:
             A tuple of (subject ID, current exam Index, current exam data,
             prior exam Index, prior exam data). If no prior exam is present, 
             will return None.
         Notes:
-            for SC2.
+            This generates all the pairs of the current and the prior exams. 
+            The function is meant for SC2.
         '''
         for subj_id, subj_dat in self.subj_generator():
             nb_exam = len(subj_dat.index.unique())
             if nb_exam == 1:
                 yield (subj_id, 1, subj_dat.loc[1], None, None)
-            for prior_idx in xrange(1, nb_exam):
-                curr_idx = prior_idx + 1
+            else:
+                for prior_idx in xrange(1, nb_exam):
+                    curr_idx = prior_idx + 1
+                    yield (subj_id, curr_idx, subj_dat.loc[curr_idx], 
+                           prior_idx, subj_dat.loc[prior_idx])
+
+
+    def last_2_exam_generator(self):
+        '''A generator for the data of the last 2 exams of each subject
+        Returns:
+            A tuple of (subject ID, last exam Index, last exam data,
+            2nd last exam Index, 2nd last exam data). If no prior exam is 
+            present, will return None.
+        Notes:
+            The function is meant for SC2.
+        '''
+        for subj_id, subj_dat in self.subj_generator():
+            nb_exam = len(subj_dat.index.unique())
+            if nb_exam == 1:
+                yield (subj_id, 1, subj_dat.loc[1], None, None)
+            else:
+                curr_idx = nb_exam
+                prior_idx = curr_idx - 1
                 yield (subj_id, curr_idx, subj_dat.loc[curr_idx], 
                        prior_idx, subj_dat.loc[prior_idx])
 
 
-    def get_last_2_exam_dat(self):
-        '''Get the info about the last 2 exams as a dataframe
+    def get_flatten_2_exam_dat(self):
+        '''Get the info about the flatten 2 exams as a dataframe
         Returns: 
             a tuple of (df, labs) where df is a dataframe of exam pair info 
             for breasts; labs is the corresponding cancer labels.
@@ -243,7 +265,7 @@ class DMMetaManager(object):
         rec_list = []
         lab_list = []
         for subj_id, curr_idx, curr_dat, prior_idx, prior_dat in \
-                self.last_2_exam_generator():
+                self.flatten_2_exam_generator():
             left_record, right_record = \
                 DMMetaManager.get_info_exam_pair(curr_dat, prior_dat)
             rec_list.append(left_record)
