@@ -77,7 +77,7 @@ class DMMetaManager(object):
             return self.img_df_indexed
 
 
-    def get_flatten_img_list(self, meta=False):
+    def get_flatten_img_list(self, subj_list=None, meta=False):
         '''Get image-level training data list
         Args:
             meta ([bool]): whether to return meta info or not. Default is 
@@ -85,24 +85,21 @@ class DMMetaManager(object):
         '''
         img = []
         lab = []
-        try:
-            for idx, dat in self.exam_img_df.iterrows():
+        for subj_id, ex_idx, exam_dat in self.exam_generator(subj_list):
+            for idx, dat in exam_dat.iterrows():
                 img_name = dat['filename']
                 laterality = dat['laterality']
-                cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
                 try:
-                    cancer = int(cancer)
-                except ValueError:
-                    cancer = np.nan
-                img.append(img_name)
-                lab.append(cancer)
-        except AttributeError:
-            for idx, dat in self.img_df_indexed.iterrows():
-                img_name = dat['filename']
-                try:
-                    cancer = int(dat['cancer'])
+                    cancer = dat['cancerL'] if laterality == 'L' else dat['cancerR']
+                    try:
+                        cancer = int(cancer)
+                    except ValueError:
+                        cancer = np.nan
                 except KeyError:
-                    cancer = np.nan
+                    try:
+                        cancer = int(dat['cancer'])
+                    except KeyError:
+                        cancer = np.nan
                 img.append(img_name)
                 lab.append(cancer)
 
@@ -170,8 +167,10 @@ class DMMetaManager(object):
         return info
 
 
-    def subj_generator(self):
+    def subj_generator(self, subj_list=None):
         '''A generator for the data of each subject
+        Args:
+            subj_list ([list]): a subset list of subject ids.
         Returns:
             A tuple of (subject ID, the corresponding records of the subject).
         '''
@@ -179,15 +178,16 @@ class DMMetaManager(object):
             df = self.exam_img_df
         except AttributeError:
             df = self.img_df_indexed
-        try:
-            subj_list = df.index.levels[0]
-        except AttributeError:
-            subj_list = df.index.unique()
+        if subj_list is None:
+            try:
+                subj_list = df.index.levels[0]
+            except AttributeError:
+                subj_list = df.index.unique()
         for subj_id in subj_list:
             yield (subj_id, df.loc[subj_id])
 
 
-    def exam_generator(self):
+    def exam_generator(self, subj_list=None):
         '''A generator for the data of each exam
         Returns:
             A tuple of (subject ID, exam Index, the corresponding records of 
@@ -196,12 +196,12 @@ class DMMetaManager(object):
             All exams are flattened. When examIndex is unavailable, the 
             returned exam index is equal to the subject ID.
         '''
-        for subj_id, subj_dat in self.subj_generator():
+        for subj_id, subj_dat in self.subj_generator(subj_list):
             for ex_idx in subj_dat.index.unique():
                 yield (subj_id, ex_idx, subj_dat.loc[ex_idx])
 
 
-    def last_exam_generator(self):
+    def last_exam_generator(self, subj_list=None):
         '''A generator for the data of the last exam of each subject
         Returns:
             A tuple of (subject ID, exam Index, the corresponding records of 
@@ -210,12 +210,12 @@ class DMMetaManager(object):
             When examIndex is unavailable, the returned exam index is equal to 
             the subject ID.
         '''
-        for subj_id, subj_dat in self.subj_generator():
+        for subj_id, subj_dat in self.subj_generator(subj_list):
             last_idx = subj_dat.index.max()
             yield (subj_id, last_idx, subj_dat.loc[last_idx])
 
 
-    def flatten_2_exam_generator(self):
+    def flatten_2_exam_generator(self, subj_list=None):
         '''A generator for the data of the flatten 2 exams of each subject
         Returns:
             A tuple of (subject ID, current exam Index, current exam data,
@@ -225,7 +225,7 @@ class DMMetaManager(object):
             This generates all the pairs of the current and the prior exams. 
             The function is meant for SC2.
         '''
-        for subj_id, subj_dat in self.subj_generator():
+        for subj_id, subj_dat in self.subj_generator(subj_list):
             nb_exam = len(subj_dat.index.unique())
             if nb_exam == 1:
                 yield (subj_id, 1, subj_dat.loc[1], None, None)
@@ -236,7 +236,7 @@ class DMMetaManager(object):
                            prior_idx, subj_dat.loc[prior_idx])
 
 
-    def last_2_exam_generator(self):
+    def last_2_exam_generator(self, subj_list=None):
         '''A generator for the data of the last 2 exams of each subject
         Returns:
             A tuple of (subject ID, last exam Index, last exam data,
@@ -245,7 +245,7 @@ class DMMetaManager(object):
         Notes:
             The function is meant for SC2.
         '''
-        for subj_id, subj_dat in self.subj_generator():
+        for subj_id, subj_dat in self.subj_generator(subj_list):
             nb_exam = len(subj_dat.index.unique())
             if nb_exam == 1:
                 yield (subj_id, 1, subj_dat.loc[1], None, None)
@@ -256,7 +256,7 @@ class DMMetaManager(object):
                        prior_idx, subj_dat.loc[prior_idx])
 
 
-    def get_flatten_2_exam_dat(self, pred_tsv=None):
+    def get_flatten_2_exam_dat(self, subj_list=None, pred_tsv=None):
         '''Get the info about the flatten 2 exams as a dataframe
         Returns: 
             a tuple of (df, labs) where df is a dataframe of exam pair info 
@@ -269,7 +269,7 @@ class DMMetaManager(object):
             pred_df = pred_df.set_index(['subjectId', 'examIndex', 'laterality'])
 
         for subj_id, curr_idx, curr_dat, prior_idx, prior_dat in \
-                self.flatten_2_exam_generator():
+                self.flatten_2_exam_generator(subj_list):
             left_record, right_record = \
                 DMMetaManager.get_info_exam_pair(curr_dat, prior_dat)
             if pred_tsv is not None:
@@ -314,30 +314,50 @@ class DMMetaManager(object):
         return df, labs
 
 
-    def get_subj_list(self, meta=False):
+    def get_subj_dat_list(self, subj_list=None, meta=False):
         '''Get subject-level training data list
         Returns:
             A list of all subjects. Each element is a tuple of (subject ID, 
             [ (exam Index, extracted exam info), ..., () ] ).
         '''
-        subj_list = []
-        for subj_id, subj_dat in self.subj_generator():
+        subj_dat_list = []
+        for subj_id, subj_dat in self.subj_generator(subj_list):
             subj_exam_list = []
             for ex_idx in subj_dat.index.unique():  # uniq exam indices.
                 exam_info = self._get_info_per_exam(subj_dat.loc[ex_idx])
                 subj_exam_list.append( (ex_idx, exam_info) )
-            subj_list.append( (subj_id, subj_exam_list) )
-        return subj_list
+            subj_dat_list.append( (subj_id, subj_exam_list) )
+        return subj_dat_list
 
 
-    def get_flatten_exam_list(self, meta=False):
+    def get_subj_labs(self):
+        '''Get subject IDs and their last exam labels
+        '''
+        subj_list = []
+        lab_list = []
+        for subj_id, ex_idx, exam_dat in self.last_exam_generator():
+            subj_list.append(subj_id)
+            try:
+                cancerL = (exam_dat['cancerL'] == 1).sum() > 0
+                cancerR = (exam_dat['cancerR'] == 1).sum() > 0
+                lab_list.append(1 if cancerL or cancerR else 0)
+            except KeyError:
+                try:
+                    cancer = (exam_dat['cancer'] == 1).sum() > 0
+                    lab_list.append(1 if cancer else 0)
+                except KeyError:
+                    lab_list.append(np.nan)
+        return subj_list, lab_list
+
+
+    def get_flatten_exam_list(self, subj_list=None, meta=False):
         '''Get exam-level training data list
         Returns:
             A list of all exams for all subjects. Each element is a tuple of 
             (subject ID, exam Index, a dict of extracted info for the exam).
         '''
         exam_list = []
-        for subj_id, ex_idx, exam_dat in self.exam_generator():
+        for subj_id, ex_idx, exam_dat in self.exam_generator(subj_list):
             exam_list.append( (subj_id, ex_idx, 
                                self._get_info_per_exam(exam_dat)) )
         return exam_list
@@ -558,14 +578,14 @@ class DMMetaManager(object):
         return summary_df
 
 
-    def get_last_exam_list(self, meta=False):
+    def get_last_exam_list(self, subj_list=None, meta=False):
         '''Get the last exam training data list
         Returns:
             A list of the last exams for each subject. Each element is a tuple 
             of (subject ID, exam Index, a dict of extracted info for the exam).
         '''
         exam_list = []
-        for subj_id, ex_idx, exam_dat in self.last_exam_generator():
+        for subj_id, ex_idx, exam_dat in self.last_exam_generator(subj_list):
             exam_list.append( (subj_id, ex_idx, 
                                self._get_info_per_exam(exam_dat)) )
         return exam_list
