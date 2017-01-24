@@ -155,6 +155,7 @@ if __name__ == '__main__':
         featurewise_std=args.featurewise_std,
         batch_size=args.batch_size, 
         img_tsv=args.img_tsv,
+        exam_tsv=args.exam_tsv,
         dl_state=args.dl_state,
         enet_state=args.enet_state,
         validation_mode=args.validation_mode,
