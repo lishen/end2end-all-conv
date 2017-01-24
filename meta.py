@@ -77,6 +77,23 @@ class DMMetaManager(object):
             return self.img_df_indexed
 
 
+    def set_exam_df(self, exam_df):
+        '''Set exam dataframe from external object
+        '''
+        if 'cancerL' in exam_df.columns:
+            self.exam_img_df = exam_df
+            try:
+                del self.img_df_indexed
+            except AttributeError:
+                pass
+        else:
+            self.img_df_indexed = exam_df
+            try:
+                del self.exam_img_df
+            except AttributeError:
+                pass
+
+
     def get_flatten_img_list(self, subj_list=None, meta=False):
         '''Get image-level training data list
         Args:
