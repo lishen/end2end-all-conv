@@ -256,7 +256,7 @@ class DMMetaManager(object):
                        prior_idx, subj_dat.loc[prior_idx])
 
 
-    def get_flatten_2_exam_dat(self):
+    def get_flatten_2_exam_dat(self, pred_tsv=None):
         '''Get the info about the flatten 2 exams as a dataframe
         Returns: 
             a tuple of (df, labs) where df is a dataframe of exam pair info 
@@ -264,10 +264,36 @@ class DMMetaManager(object):
         '''
         rec_list = []
         lab_list = []
+        if pred_tsv is not None:
+            pred_df = pd.read_csv(pred_tsv, sep="\t")
+            pred_df = pred_df.set_index(['subjectId', 'examIndex', 'laterality'])
+
         for subj_id, curr_idx, curr_dat, prior_idx, prior_dat in \
                 self.flatten_2_exam_generator():
             left_record, right_record = \
                 DMMetaManager.get_info_exam_pair(curr_dat, prior_dat)
+            if pred_tsv is not None:
+                nb_days = left_record['daysSincePreviousExam']
+                curr_left_score = pred_df.loc[subj_id].loc[curr_idx].loc['L']['confidence']
+                curr_right_score = pred_df.loc[subj_id].loc[curr_idx].loc['R']['confidence']
+                try:
+                    prior_left_score = pred_df.loc[subj_id].loc[prior_idx].loc['L']['confidence']
+                    prior_right_score = pred_df.loc[subj_id].loc[prior_idx].loc['R']['confidence']
+                    diff_left_score = (curr_left_score - prior_left_score)/nb_days*365
+                    diff_right_score = (curr_right_score - prior_right_score)/nb_days*365
+                except TypeError:
+                    prior_left_score = np.nan
+                    prior_right_score = np.nan
+                    diff_left_score = np.nan
+                    diff_right_score = np.nan
+                left_record = left_record\
+                        .assign(curr_score=curr_left_score)\
+                        .assign(prior_score=prior_left_score)\
+                        .assign(diff_score=diff_left_score)
+                right_record = right_record\
+                        .assign(curr_score=curr_right_score)\
+                        .assign(prior_score=prior_right_score)\
+                        .assign(diff_score=diff_right_score)
             rec_list.append(left_record)
             rec_list.append(right_record)
 
