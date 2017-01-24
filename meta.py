@@ -300,11 +300,13 @@ class DMMetaManager(object):
             try:
                 left_cancer = int(curr_dat['cancerL'].iloc[0])
             except ValueError:
-                left_cancer = np.nan
+                # left_cancer = np.nan
+                left_cancer = 0
             try:
                 right_cancer = int(curr_dat['cancerR'].iloc[0])
             except ValueError:
-                right_cancer = np.nan
+                # right_cancer = np.nan
+                right_cancer = 0
             lab_list.append(left_cancer)
             lab_list.append(right_cancer)
 
