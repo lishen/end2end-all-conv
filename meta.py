@@ -11,7 +11,8 @@ class DMMetaManager(object):
                  img_tsv='./metadata/images_crosswalk.tsv', 
                  exam_tsv='./metadata/exams_metadata.tsv', 
                  img_folder='./trainingData', 
-                 img_extension='dcm'):
+                 img_extension='dcm',
+                 exam_df=None):
         '''Constructor for DMMetaManager
         Args:
             img_tsv ([str]): path to the image meta .tsv file. 
@@ -21,27 +22,30 @@ class DMMetaManager(object):
             img_extension ([str]): image file extension. Default is 'dcm'.
         '''
 
-        def mod_file_path(name):
-            '''Change file name extension and append folder path.
-            '''
-            return path.join(img_folder, 
-                             path.splitext(name)[0] + '.' + img_extension)
+        if exam_df is None:
+            def mod_file_path(name):
+                '''Change file name extension and append folder path.
+                '''
+                return path.join(img_folder, 
+                                 path.splitext(name)[0] + '.' + img_extension)
 
-        img_df = pd.read_csv(img_tsv, sep="\t", na_values=['.', '*'])
-        try:
-            img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
-        except KeyError:
-            img_df_indexed = img_df.set_index(['subjectId'])
-        if exam_tsv is not None:
-            exam_df = pd.read_csv(exam_tsv, sep="\t", na_values=['.', '*'])
-            exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
-            self.exam_img_df = exam_df_indexed.join(img_df_indexed)
-            self.exam_img_df['filename'] = \
-                self.exam_img_df['filename'].apply(mod_file_path)
+            img_df = pd.read_csv(img_tsv, sep="\t", na_values=['.', '*'])
+            try:
+                img_df_indexed = img_df.set_index(['subjectId', 'examIndex'])
+            except KeyError:
+                img_df_indexed = img_df.set_index(['subjectId'])
+            if exam_tsv is not None:
+                exam_df = pd.read_csv(exam_tsv, sep="\t", na_values=['.', '*'])
+                exam_df_indexed = exam_df.set_index(['subjectId', 'examIndex'])
+                self.exam_img_df = exam_df_indexed.join(img_df_indexed)
+                self.exam_img_df['filename'] = \
+                    self.exam_img_df['filename'].apply(mod_file_path)
+            else:
+                img_df_indexed['filename'] = \
+                    img_df_indexed['filename'].apply(mod_file_path)
+                self.img_df_indexed = img_df_indexed
         else:
-            img_df_indexed['filename'] = \
-                img_df_indexed['filename'].apply(mod_file_path)
-            self.img_df_indexed = img_df_indexed
+            self.set_exam_df(exam_df)
 
         # Setup CC and MLO view categorization.
         # View      Description
