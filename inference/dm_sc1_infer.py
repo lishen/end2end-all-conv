@@ -4,6 +4,7 @@ from keras.models import load_model
 from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
 from dm_enet import MultiViewDLElasticNet
+import dm_inference as dminfer
 
 import warnings
 import exceptions
@@ -49,22 +50,6 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
         exam_list, target_size=(img_size[0], img_size[1]), 
         class_mode=class_mode, prediction_mode=True, batch_size=batch_size)
 
-
-    def pred_2view_img_list(cc_img_list, mlo_img_list, model):
-        '''Make predictions for all pairwise combinations of the 2 views
-        '''
-        pass
-        pred_cc_list = []
-        pred_mlo_list = []
-        for cc in cc_img_list:
-            for mlo in mlo_img_list:
-                pred_cc_list.append(cc)
-                pred_mlo_list.append(mlo)
-        pred_cc = np.stack(pred_cc_list)
-        pred_mlo = np.stack(pred_mlo_list)
-        preds = model.predict_on_batch([pred_cc, pred_mlo])
-        return preds
-
     if enet_state is not None:
         model = MultiViewDLElasticNet(*enet_state)
     elif dl_state is not None:
@@ -76,9 +61,9 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
 
     # Print header.
     if validation_mode:
-        fout.write("subjectId\texamIndex\tlaterality\tconfidence\ttarget\n")
+        fout.write(dminfer.INFER_HEADER_VAL)
     else:
-        fout.write("subjectId\tlaterality\tconfidence\n")
+        fout.write(dminfer.INFER_HEADER)
 
     while exams_seen < len(exam_list):
         ebat = next(datgen_exam)
@@ -95,14 +80,10 @@ def run(img_folder, img_size=[288, 224], do_featurewise_norm=True,
             exam = exam_batch[i]
             li = i*2        # left breast index.
             ri = i*2 + 1    # right breast index.
-            left_preds = pred_2view_img_list(cc_batch[li], mlo_batch[li], model)
-            right_preds = pred_2view_img_list(cc_batch[ri], mlo_batch[ri], model)
-            if not use_mean:
-                left_pred = left_preds.max()
-                right_pred = right_preds.max()
-            else:
-                left_pred = left_preds.mean()
-                right_pred = right_preds.mean()
+            left_pred = dminfer.pred_2view_img_list(
+                cc_batch[li], mlo_batch[li], model, use_mean)
+            right_pred = dminfer.pred_2view_img_list(
+                cc_batch[ri], mlo_batch[ri], model, use_mean)
             if validation_mode:
                 fout.write("%s\t%s\tL\t%f\t%f\n" % \
                            (str(subj), str(exam), left_pred, bat_y[li]))
