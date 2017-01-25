@@ -127,7 +127,7 @@ class DMMetaManager(object):
         return (img, lab)
 
 
-    def _get_info_per_exam(self, exam):
+    def get_info_per_exam(self, exam):
         '''Get training-related info for each exam as a dict
         Args:
             exam (DataFrame): data for an exam.
@@ -347,7 +347,7 @@ class DMMetaManager(object):
         for subj_id, subj_dat in self.subj_generator(subj_list):
             subj_exam_list = []
             for ex_idx in subj_dat.index.unique():  # uniq exam indices.
-                exam_info = self._get_info_per_exam(subj_dat.loc[ex_idx])
+                exam_info = self.get_info_per_exam(subj_dat.loc[ex_idx])
                 subj_exam_list.append( (ex_idx, exam_info) )
             subj_dat_list.append( (subj_id, subj_exam_list) )
         return subj_dat_list
@@ -382,7 +382,7 @@ class DMMetaManager(object):
         exam_list = []
         for subj_id, ex_idx, exam_dat in self.exam_generator(subj_list):
             exam_list.append( (subj_id, ex_idx, 
-                               self._get_info_per_exam(exam_dat)) )
+                               self.get_info_per_exam(exam_dat)) )
         return exam_list
 
 
@@ -610,7 +610,7 @@ class DMMetaManager(object):
         exam_list = []
         for subj_id, ex_idx, exam_dat in self.last_exam_generator(subj_list):
             exam_list.append( (subj_id, ex_idx, 
-                               self._get_info_per_exam(exam_dat)) )
+                               self.get_info_per_exam(exam_dat)) )
         return exam_list
 
 
