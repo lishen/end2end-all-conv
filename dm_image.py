@@ -51,7 +51,7 @@ class DMImgListIterator(Iterator):
                  class_mode='binary', validation_mode=False,
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=32, shuffle=True, seed=None,
-                 save_to_dir=None, save_prefix='', save_format='jpeg'):
+                 save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
         '''DM image iterator
         Args:
             target_size ([tuple of int]): (height, width).
@@ -88,6 +88,7 @@ class DMImgListIterator(Iterator):
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
+        self.verbose = verbose
         # Convert flattened image list.
         self.nb_sample = len(img_list)
         self.nb_class = 2
@@ -95,7 +96,8 @@ class DMImgListIterator(Iterator):
         self.classes = np.array(lab_list)
         nb_pos = np.sum(self.classes == 1)
         nb_neg = np.sum(self.classes == 0)
-        print('There are %d cancer cases and %d normal cases.' % (nb_pos, nb_neg))
+        if verbose:
+            print('There are %d cancer cases and %d normal cases.' % (nb_pos, nb_neg))
 
         super(DMImgListIterator, self).__init__(
             self.nb_sample, batch_size, shuffle, seed)
@@ -179,7 +181,7 @@ class DMExamListIterator(Iterator):
                  class_mode='binary', validation_mode=False, prediction_mode=False, 
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=16, shuffle=True, seed=None,
-                 save_to_dir=None, save_prefix='', save_format='jpeg'):
+                 save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
 
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
@@ -209,6 +211,7 @@ class DMExamListIterator(Iterator):
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
+        self.verbose = verbose
         # Convert exam list.
         self.exam_list = exam_list
         self.nb_exam = len(exam_list)
@@ -218,16 +221,17 @@ class DMExamListIterator(Iterator):
         self.classes = [ (e[2]['L']['cancer'], e[2]['R']['cancer']) 
                          for e in exam_list ]
         self.classes = np.array(self.classes)  # (exams, breasts)
-        print('For left breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
-            (np.sum(self.classes[:, 0] == 0), 
-             np.sum(self.classes[:, 0] == 1), 
-             np.sum(np.isnan(self.classes[:, 0])))
-            )
-        print('For right breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
-            (np.sum(self.classes[:, 1] == 0), 
-             np.sum(self.classes[:, 1] == 1), 
-             np.sum(np.isnan(self.classes[:, 1])))
-            )
+        if verbose:
+            print('For left breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
+                (np.sum(self.classes[:, 0] == 0), 
+                 np.sum(self.classes[:, 0] == 1), 
+                 np.sum(np.isnan(self.classes[:, 0])))
+                )
+            print('For right breasts, normal=%d, cancer=%d, unimaged/masked=%d.' % 
+                (np.sum(self.classes[:, 1] == 0), 
+                 np.sum(self.classes[:, 1] == 1), 
+                 np.sum(np.isnan(self.classes[:, 1])))
+                )
 
         super(DMExamListIterator, self).__init__(
             self.nb_exam, batch_size, shuffle, seed)
@@ -508,7 +512,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                            validation_mode=False,
                            balance_classes=False, all_neg_skip=0., 
                            batch_size=32, shuffle=True, seed=None,
-                           save_to_dir=None, save_prefix='', save_format='jpeg'):
+                           save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
         return DMImgListIterator(
             img_list, lab_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
@@ -516,7 +520,8 @@ class DMImageDataGenerator(ImageDataGenerator):
             balance_classes=balance_classes, all_neg_skip=all_neg_skip,
             dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
-            save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
+            save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format,
+            verbose=verbose)
 
 
     def flow_from_exam_list(self, exam_list, 
@@ -524,7 +529,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                             validation_mode=False, prediction_mode=False,
                             balance_classes=False, all_neg_skip=0., 
                             batch_size=16, shuffle=True, seed=None,
-                            save_to_dir=None, save_prefix='', save_format='jpeg'):
+                            save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
         return DMExamListIterator(
             exam_list, self, 
             target_size=target_size, gs_255=gs_255, class_mode=class_mode,
@@ -532,7 +537,8 @@ class DMImageDataGenerator(ImageDataGenerator):
             balance_classes=balance_classes, all_neg_skip=all_neg_skip, 
             dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
-            save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format)
+            save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format,
+            verbose=verbose)
 
 
 
