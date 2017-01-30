@@ -3,6 +3,7 @@ modelState
 output
 trainingData
 inferenceData
+referenceData
 preprocessedData
 nohup.out
 *.sublime-*
