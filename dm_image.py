@@ -24,7 +24,7 @@ def index_balancer(index_array, classes, ratio, rng):
     return index_array
 
 
-def read_resize_img(fname, target_size, gs_255=False):
+def read_resize_img(fname, target_size, target_scale=None, gs_255=False):
     '''Read an image (.png, .jpg, .dcm) and resize it to target size.
     '''
     if path.splitext(fname)[1] == '.dcm':
@@ -39,6 +39,8 @@ def read_resize_img(fname, target_size, gs_255=False):
             img, dsize=(target_size[1], target_size[0]), 
             interpolation=cv2.INTER_CUBIC)
     img = img.astype('float32')
+    if target_scale is not None:
+        img *= target_scale/img.max()
     return img
 
 
