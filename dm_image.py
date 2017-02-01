@@ -49,7 +49,8 @@ class DMImgListIterator(Iterator):
     '''
 
     def __init__(self, img_list, lab_list, image_data_generator,
-                 target_size=(1152, 896), gs_255=False, dim_ordering='default',
+                 target_size=(1152, 896), target_scale=4095, gs_255=False, 
+                 dim_ordering='default',
                  class_mode='binary', validation_mode=False,
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=32, shuffle=True, seed=None,
@@ -67,6 +68,7 @@ class DMImgListIterator(Iterator):
             dim_ordering = K.image_dim_ordering()
         self.image_data_generator = image_data_generator
         self.target_size = tuple(target_size)
+        self.target_scale = target_scale
         self.gs_255 = gs_255
         self.dim_ordering = dim_ordering
         # Always gray-scale.
@@ -133,7 +135,8 @@ class DMImgListIterator(Iterator):
                 batch_x[bi] = batch_x[bi-1]  # avoid repeated readings.
             else:
                 last_fname = fname
-                img = read_resize_img(fname, self.target_size, self.gs_255)
+                img = read_resize_img(
+                    fname, self.target_size, self.target_scale, self.gs_255)
                 # Always have one channel.
                 if self.dim_ordering == 'th':
                     x = img.reshape((1, img.shape[0], img.shape[1]))
@@ -179,7 +182,8 @@ class DMExamListIterator(Iterator):
     '''
 
     def __init__(self, exam_list, image_data_generator,
-                 target_size=(1152, 896), gs_255=False, dim_ordering='default',
+                 target_size=(1152, 896), target_scale=4095, gs_255=False, 
+                 dim_ordering='default',
                  class_mode='binary', validation_mode=False, prediction_mode=False, 
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=16, shuffle=True, seed=None,
@@ -189,6 +193,7 @@ class DMExamListIterator(Iterator):
             dim_ordering = K.image_dim_ordering()
         self.image_data_generator = image_data_generator
         self.target_size = tuple(target_size)
+        self.target_scale = target_scale
         self.gs_255 = gs_255
         self.dim_ordering = dim_ordering
         # Always gray-scale. Two inputs: CC and MLO.
@@ -278,7 +283,9 @@ class DMExamListIterator(Iterator):
                 if self.prediction_mode:
                     img = []
                     for fname in img_df['filename']:
-                        img.append(read_resize_img(fname, self.target_size, self.gs_255))
+                        img.append(read_resize_img(
+                            fname, self.target_size, self.target_scale, 
+                            self.gs_255))
                     if len(img) == 0:
                         raise ValueError('empty image dataframe')
                 else:
@@ -286,7 +293,8 @@ class DMExamListIterator(Iterator):
                         fname = img_df['filename'].iloc[0]  # read the canonical view.
                     else:  # training mode.
                         fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
-                    img = read_resize_img(fname, self.target_size, self.gs_255)
+                    img = read_resize_img(
+                        fname, self.target_size, self.target_scale, self.gs_255)
             except ValueError:
                 if self.err_counter < 10:
                     print "Error encountered reading an image dataframe:", 
@@ -510,15 +518,15 @@ class DMImageDataGenerator(ImageDataGenerator):
 
 
     def flow_from_img_list(self, img_list, lab_list, 
-                           target_size=(1152, 896), gs_255=False, class_mode='binary',
-                           validation_mode=False,
+                           target_size=(1152, 896), target_scale=4095, gs_255=False, 
+                           class_mode='binary', validation_mode=False,
                            balance_classes=False, all_neg_skip=0., 
                            batch_size=32, shuffle=True, seed=None,
                            save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
         return DMImgListIterator(
             img_list, lab_list, self, 
-            target_size=target_size, gs_255=gs_255, class_mode=class_mode,
-            validation_mode=validation_mode,
+            target_size=target_size, target_scale=target_scale, gs_255=gs_255, 
+            class_mode=class_mode, validation_mode=validation_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip,
             dim_ordering=self.dim_ordering,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
@@ -527,14 +535,16 @@ class DMImageDataGenerator(ImageDataGenerator):
 
 
     def flow_from_exam_list(self, exam_list, 
-                            target_size=(1152, 896), gs_255=False, class_mode='binary',
+                            target_size=(1152, 896), target_scale=4095, gs_255=False, 
+                            class_mode='binary',
                             validation_mode=False, prediction_mode=False,
                             balance_classes=False, all_neg_skip=0., 
                             batch_size=16, shuffle=True, seed=None,
                             save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
         return DMExamListIterator(
             exam_list, self, 
-            target_size=target_size, gs_255=gs_255, class_mode=class_mode,
+            target_size=target_size, target_scale=target_scale, gs_255=gs_255, 
+            class_mode=class_mode,
             validation_mode=validation_mode, prediction_mode=prediction_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip, 
             dim_ordering=self.dim_ordering,
