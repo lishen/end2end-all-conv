@@ -24,9 +24,12 @@ def index_balancer(index_array, classes, ratio, rng):
     return index_array
 
 
-def read_resize_img(fname, target_size, target_scale=None, gs_255=False):
+def read_resize_img(fname, target_size=None, target_height=None, 
+                    target_scale=None, gs_255=False):
     '''Read an image (.png, .jpg, .dcm) and resize it to target size.
     '''
+    if target_size is None and target_height is None:
+        raise Exception('One of [target_size, target_height] must not be None')
     if path.splitext(fname)[1] == '.dcm':
         img = dicom.read_file(fname).pixel_array
     else:
@@ -34,9 +37,13 @@ def read_resize_img(fname, target_size, target_scale=None, gs_255=False):
             img = cv2.imread(fname, cv2.IMREAD_GRAYSCALE)
         else:
             img = cv2.imread(fname, cv2.IMREAD_UNCHANGED)
-    if target_size != img.shape:
+    if target_height is not None:
+        target_width = int(float(target_height)/img.shape[0]*img.shape[1])
+    else:
+        target_height, target_width = target_size
+    if (target_height, target_width) != img.shape:
         img = cv2.resize(
-            img, dsize=(target_size[1], target_size[0]), 
+            img, dsize=(target_width, target_height), 
             interpolation=cv2.INTER_CUBIC)
     img = img.astype('float32')
     if target_scale is not None:
@@ -136,7 +143,8 @@ class DMImgListIterator(Iterator):
             else:
                 last_fname = fname
                 img = read_resize_img(
-                    fname, self.target_size, self.target_scale, self.gs_255)
+                    fname, self.target_size, target_scale=self.target_scale, 
+                    gs_255=self.gs_255)
                 # Always have one channel.
                 if self.dim_ordering == 'th':
                     x = img.reshape((1, img.shape[0], img.shape[1]))
@@ -284,8 +292,9 @@ class DMExamListIterator(Iterator):
                     img = []
                     for fname in img_df['filename']:
                         img.append(read_resize_img(
-                            fname, self.target_size, self.target_scale, 
-                            self.gs_255))
+                            fname, self.target_size, 
+                            target_scale=self.target_scale, 
+                            gs_255=self.gs_255))
                     if len(img) == 0:
                         raise ValueError('empty image dataframe')
                 else:
@@ -294,7 +303,8 @@ class DMExamListIterator(Iterator):
                     else:  # training mode.
                         fname = img_df['filename'].sample(1, random_state=rng).iloc[0]
                     img = read_resize_img(
-                        fname, self.target_size, self.target_scale, self.gs_255)
+                        fname, self.target_size, target_scale=self.target_scale, 
+                        gs_255=self.gs_255)
             except ValueError:
                 if self.err_counter < 10:
                     print "Error encountered reading an image dataframe:", 
