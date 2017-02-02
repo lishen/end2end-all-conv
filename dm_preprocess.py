@@ -96,6 +96,37 @@ class DMImagePreprocessor(object):
 
         return (img_suppr, breast_mask)
 
+
+    @classmethod
+    def segment_breast(cls, img, low_int_threshold=.05, crop=True):
+        '''Perform breast segmentation
+        Args:
+            low_int_threshold([float or int]): Low intensity threshold to 
+                    filter out background. It can be a fraction of the max 
+                    intensity value or an integer intensity value.
+            crop ([bool]): Whether or not to crop the image.
+        Returns:
+            An image of the segmented breast.
+        '''
+        maxval = cls.max_pix_val(img.dtype)
+        if low_int_threshold < 1.:
+            low_th = int(img.max()*low_int_threshold)
+        else:
+            low_th = int(low_int_threshold)
+        _, img_bin = cv2.threshold(
+            img, low_th, maxval=maxval, type=cv2.THRESH_BINARY)
+        _,contours,_ = cv2.findContours(
+            img_bin.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cont_areas = [ cv2.contourArea(cont) for cont in contours ]
+        idx = np.argmax(cont_areas)  # find the largest contour, i.e. breast.
+        breast_mask = cv2.drawContours(
+            np.zeros_like(img_bin), contours, idx, maxval, cv2.FILLED)
+        img_breast_only = cv2.bitwise_and(img, breast_mask)
+        if crop:
+            x,y,w,h = cv2.boundingRect(contours[idx])
+            img_breast_only = img_breast_only[y:y+h, x:x+w]
+        return img_breast_only
+
     
     def remove_pectoral(self, img, breast_mask, high_int_threshold=.8, 
                         morph_kn_size=3, n_morph_op=7, sm_kn_size=25):
