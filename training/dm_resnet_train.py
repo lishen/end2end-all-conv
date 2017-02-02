@@ -22,8 +22,9 @@ import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
-def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
-        do_featurewise_norm=True, featurewise_mean=485.9, featurewise_std=765.2, 
+def run(img_folder, img_extension='dcm', 
+        img_size=[288, 224], img_scale=4095, multi_view=False,
+        do_featurewise_norm=True, featurewise_mean=398.5, featurewise_std=627.8, 
         batch_size=16, samples_per_epoch=160, nb_epoch=20, 
         balance_classes=.0, all_neg_skip=0., pos_cls_weight=1.0,
         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
@@ -80,33 +81,39 @@ def run(img_folder, img_extension='dcm', img_size=[288, 224], multi_view=False,
     if multi_view:
         train_generator = img_gen.flow_from_exam_list(
             exam_train, target_size=(img_size[0], img_size[1]), 
+            target_scale=img_scale,
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
         if load_val_ram:
             val_generator = img_gen.flow_from_exam_list(
                 exam_val, target_size=(img_size[0], img_size[1]), 
+                target_scale=img_scale,
                 batch_size=val_size_, validation_mode=True, 
                 class_mode='binary')
         else:
             val_generator = img_gen.flow_from_exam_list(
                 exam_val, target_size=(img_size[0], img_size[1]), 
+                target_scale=img_scale,
                 batch_size=batch_size, validation_mode=True, 
                 class_mode='binary')
     else:
         train_generator = img_gen.flow_from_img_list(
             img_train, lab_train, target_size=(img_size[0], img_size[1]), 
+            target_scale=img_scale,
             batch_size=batch_size, balance_classes=balance_classes, 
             all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
             class_mode='binary')
         if load_val_ram:
             val_generator = img_gen.flow_from_img_list(
                 img_val, lab_val, target_size=(img_size[0], img_size[1]), 
+                target_scale=img_scale,
                 batch_size=val_size_, validation_mode=True,
                 class_mode='binary')
         else:
             val_generator = img_gen.flow_from_img_list(
                 img_val, lab_val, target_size=(img_size[0], img_size[1]), 
+                target_scale=img_scale,
                 batch_size=batch_size, validation_mode=True,
                 class_mode='binary')
 
@@ -229,6 +236,7 @@ if __name__ == '__main__':
                         type=str, default="dcm")
     parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, 
                         default=[288, 224])
+    parser.add_argument("--img-scale", "-ic", dest="img_scale", type=int, default=4095)
     parser.add_argument("--multi-view", dest="multi_view", action="store_true")
     parser.add_argument("--no-multi-view", dest="multi_view", action="store_false")
     parser.set_defaults(multi_view=False)
@@ -236,9 +244,9 @@ if __name__ == '__main__':
     parser.add_argument("--no-featurewise-norm", dest="do_featurewise_norm", action="store_false")
     parser.set_defaults(do_featurewise_norm=True)
     parser.add_argument("--featurewise-mean", "-feam", dest="featurewise_mean", 
-                        type=float, default=485.9)
+                        type=float, default=398.5)
     parser.add_argument("--featurewise-std", "-feas", dest="featurewise_std", 
-                        type=float, default=765.2)
+                        type=float, default=627.8)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=16)
     parser.add_argument("--samples-per-epoch", "-spe", dest="samples_per_epoch", 
                         type=int, default=160)
@@ -280,6 +288,7 @@ if __name__ == '__main__':
     run_opts = dict(
         img_extension=args.img_extension, 
         img_size=args.img_size, 
+        img_scale=args.img_scale,
         multi_view=args.multi_view,
         do_featurewise_norm=args.do_featurewise_norm,
         featurewise_mean=args.featurewise_mean,
