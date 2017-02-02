@@ -128,7 +128,13 @@ def run(img_folder, img_extension='dcm',
 
     # Create model.
     if resume_from is not None:
-        model = load_model(resume_from)
+        model = load_model(
+            resume_from, 
+            custom_objects={
+                'sensitivity': DMMetrics.sensitivity, 
+                'specificity': DMMetrics.specificity
+            }
+        )
     else:
         if multi_view:
             builder = MultiViewResNetBuilder
