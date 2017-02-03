@@ -6,6 +6,7 @@ from keras.utils.np_utils import to_categorical
 import keras.backend as K
 import cv2
 import dicom
+from dm_preprocess import DMImagePreprocessor as prep
 
 
 def index_balancer(index_array, classes, ratio, rng):
@@ -49,6 +50,34 @@ def read_resize_img(fname, target_size=None, target_height=None,
     if target_scale is not None:
         img *= target_scale/img.max()
     return img
+
+
+def get_roi_patches(img, key_pts, roi_size=(256, 256)):
+    '''Extract image patches according to a key points list
+    '''
+    def clip(v, minv, maxv):
+        '''Clip a coordinate value to be within an image's bounds
+        '''
+        v = minv if v < minv else v
+        v = maxv if v > maxv else v
+        return v
+
+    patches = np.zeros((len(key_pts),) + roi_size, dtype='float32')
+    for i, kp in enumerate(key_pts):
+        if isinstance(kp, np.ndarray):
+            xc, yc = kp
+        else:
+            xc, yc = kp.pt
+        x = int(xc - roi_size[1]/2)
+        x = clip(x, 0, img.shape[1])
+        y = int(yc - roi_size[0]/2)
+        y = clip(y, 0, img.shape[0])
+        roi = img[y:y+roi_size[0], x:x+roi_size[1]]
+        patch = np.zeros(roi_size)
+        patch[0:roi.shape[0], 0:roi.shape[1]] = roi
+        patches[i] = patch
+
+    return patches
 
 
 class DMImgListIterator(Iterator):
@@ -482,6 +511,189 @@ class DMExamListIterator(Iterator):
         # if class_mode is None, then the first index is not needed.
 
 
+class DMCandidROIIterator(Iterator):
+    '''An iterator for candidate ROIs from mammograms
+    '''
+
+    def __init__(self, img_list, lab_list, image_data_generator,
+                 target_height=1024, target_scale=4095, gs_255=False, 
+                 dim_ordering='default',
+                 class_mode='binary', validation_mode=False,
+                 img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
+                 low_int_threshold=.05, blob_min_area=3, 
+                 blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
+                 roi_clf=None, clf_bs=32,
+                 all_neg_skip=0., shuffle=True, seed=None,
+                 save_to_dir=None, save_prefix='', save_format='jpeg', 
+                 verbose=True):
+        '''DM candidate roi iterator
+        '''
+        if dim_ordering == 'default':
+            dim_ordering = K.image_dim_ordering()
+        self.image_data_generator = image_data_generator
+        self.target_height = target_height
+        self.target_scale = target_scale
+        self.gs_255 = gs_255
+        self.dim_ordering = dim_ordering
+        self.roi_per_img = roi_per_img
+        self.roi_size = roi_size
+        self.roi_clf = roi_clf
+        self.clf_bs = clf_bs
+        self.low_int_threshold = low_int_threshold
+        # Always gray-scale.
+        if self.dim_ordering == 'tf':
+            self.image_shape = self.roi_size + (1,)
+        else:
+            self.image_shape = (1,) + self.roi_size
+        if class_mode not in {'categorical', 'binary', 'sparse', None}:
+            raise ValueError('Invalid class_mode:', class_mode,
+                             '; expected one of "categorical", '
+                             '"binary", "sparse", or None.')
+        self.class_mode = class_mode
+        self.validation_mode = validation_mode
+        if validation_mode:
+            all_neg_skip = 0.
+            shuffle = False
+        self.all_neg_skip = all_neg_skip
+        self.seed = seed
+        self.save_to_dir = save_to_dir
+        self.save_prefix = save_prefix
+        self.save_format = save_format
+        self.verbose = verbose
+        # Convert flattened image list.
+        self.nb_sample = len(img_list)
+        self.nb_class = 2
+        self.filenames = list(img_list)
+        self.classes = np.array(lab_list)
+        nb_pos = np.sum(self.classes == 1)
+        nb_neg = np.sum(self.classes == 0)
+        if verbose:
+            print('There are %d cancer cases and %d normal cases.' % (nb_pos, nb_neg))
+
+        # Build a blob detector.
+        params = cv2.SimpleBlobDetector_Params()
+        params.filterByArea = True
+        params.minArea = blob_min_area
+        params.maxArea = roi_size[0]*roi_size[1]
+        params.filterByCircularity = False
+        params.filterByColor = False
+        params.filterByConvexity = False
+        params.filterByInertia = False
+        # blob detection only works with "uint8" images.
+        params.minThreshold = int(blob_min_int*255)
+        params.maxThreshold = int(blob_max_int*255)
+        params.thresholdStep = blob_th_step
+        # import pdb; pdb.set_trace()
+        self.blob_detector = cv2.SimpleBlobDetector_create(params)
+
+        super(DMCandidROIIterator, self).__init__(
+            self.nb_sample, img_per_batch, shuffle, seed)
+
+
+    def next(self):
+        with self.lock:
+            index_array, current_index, current_batch_size = next(self.index_generator)
+            classes_ = self.classes[index_array]
+            # Obtain the random state for the current batch.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
+            while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
+                index_array, current_index, current_batch_size = next(self.index_generator)
+                classes_ = self.classes[index_array]
+                rng = RandomState() if self.seed is None else \
+                    RandomState(int(self.seed) + self.total_batches_seen)
+
+        # The transformation of images is not under thread lock so it can 
+        # be done in parallel
+        nb_roi = current_batch_size*self.roi_per_img
+        batch_x = np.zeros((nb_roi,) + self.image_shape, dtype='float32')
+
+        # build batch of image data, read images first.
+        for ii, fi in enumerate(index_array):  # ii: image idx; fi: fname idx.
+            img = read_resize_img(
+                self.filenames[fi], 
+                target_height=self.target_height, 
+                target_scale=self.target_scale, 
+                gs_255=self.gs_255)
+            # breast segmentation.
+            img = prep.segment_breast(
+                img, low_int_threshold=self.low_int_threshold)
+            # blob detection.
+            key_pts = self.blob_detector.detect((img/img.max()*255).astype('uint8'))
+            if int(self.verbose) > 1:
+                print "%s: blob detection found %d key points." % \
+                    (self.filenames[fi], len(key_pts))
+            if len(key_pts) > self.roi_per_img:
+                key_pts = rng.choice(key_pts, self.roi_per_img, replace=False)
+            elif len(key_pts) > 3:
+                key_pts = rng.choice(key_pts, self.roi_per_img, replace=True)
+            else:
+                # blob detection failed, randomly draw points from the image.
+                # import pdb; pdb.set_trace()
+                pt_x = rng.randint(self.roi_size[1]/2, 
+                                   img.shape[1] - self.roi_size[1]/2, 
+                                   self.roi_per_img)
+                pt_y = rng.randint(self.roi_size[1]/2, 
+                                   img.shape[0] - self.roi_size[0]/2,
+                                   self.roi_per_img)
+                key_pts = np.stack((pt_x, pt_y), axis=1)
+
+            # get roi image patches.
+            roi_patches = get_roi_patches(img, key_pts, self.roi_size)
+            # Always have one channel.
+            if self.dim_ordering == 'th':
+                xs = roi_patches.reshape(
+                    (1, roi_patches.shape[0], roi_patches.shape[1], 
+                     roi_patches.shape[2]))
+            else:
+                xs = roi_patches.reshape(
+                    (roi_patches.shape[0], roi_patches.shape[1], 
+                     roi_patches.shape[2], 1))
+
+            batch_x[ii*self.roi_per_img:(ii+1)*self.roi_per_img] = xs
+
+        # transform and standardize.
+        for i, x in enumerate(batch_x):
+            if not self.validation_mode:
+                x = self.image_data_generator.random_transform(x)
+            x = self.image_data_generator.standardize(x)
+            batch_x[i] = x
+        
+        # optionally save augmented images to disk for debugging purposes
+        if self.save_to_dir:
+            for i in xrange(current_batch_size*self.roi_per_img):
+                fname = '{prefix}_{index}_{hash}.{format}'.\
+                    format(prefix=self.save_prefix, 
+                           index=current_index*self.roi_per_img + i,
+                           hash=rng.randint(1e4), format=self.save_format)
+                img = batch_x[i]
+                if self.dim_ordering == 'th':
+                    img = img.reshape((img.shape[1], img.shape[2]))
+                else:
+                    img = img.reshape((img.shape[0], img.shape[1]))
+                # it seems only 8-bit images are supported.
+                cv2.imwrite(path.join(self.save_to_dir, fname), img)
+        
+        # calculate sample weights using the ROI classifier.
+        if self.roi_clf is None:
+            batch_w = np.ones((len(batch_x),))
+        else:
+            batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
+
+        # build batch of labels
+        img_y = self.classes[index_array]
+        batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
+        if self.class_mode == 'sparse':
+            batch_y = batch_y
+        elif self.class_mode == 'binary':
+            batch_y = batch_y.astype('float32')
+        elif self.class_mode == 'categorical':
+            batch_y = to_categorical(batch_y, self.nb_class)
+        else:
+            return batch_x, batch_w
+        return batch_x, batch_y, batch_w
+
+
 class DMImageDataGenerator(ImageDataGenerator):
     '''Image data generator for digital mammography
     '''
@@ -563,7 +775,32 @@ class DMImageDataGenerator(ImageDataGenerator):
             verbose=verbose)
 
 
-
+    def flow_from_candid_roi(self, img_list, lab_list, 
+                 target_height=1024, target_scale=4095, gs_255=False, 
+                 dim_ordering='default',
+                 class_mode='binary', validation_mode=False,
+                 img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
+                 low_int_threshold=.05, blob_min_area=3, 
+                 blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
+                 roi_clf=None, clf_bs=32,
+                 all_neg_skip=0., shuffle=True, seed=None,
+                 save_to_dir=None, save_prefix='', save_format='jpeg', 
+                 verbose=True):
+        return DMCandidROIIterator(
+            img_list, lab_list, self,
+            target_height=target_height, target_scale=target_scale, 
+            gs_255=gs_255, dim_ordering=dim_ordering,
+            class_mode=class_mode, validation_mode=validation_mode,
+            img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
+            roi_size=roi_size,
+            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+            blob_th_step=blob_th_step,
+            roi_clf=roi_clf, clf_bs=clf_bs,
+            all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
+            save_to_dir=save_to_dir, save_prefix=save_prefix, 
+            save_format=save_format,
+            verbose=verbose)
 
 
 
