@@ -107,21 +107,24 @@ class DMImagePreprocessor(object):
             crop ([bool]): Whether or not to crop the image.
         Returns:
             An image of the segmented breast.
+        NOTES: the low_int_threshold is applied to an image of dtype 'uint8',
+            which has a max value of 255.
         '''
-        maxval = cls.max_pix_val(img.dtype)
+        img_8u = img.astype('uint8')  # img for thresholding and contours.
         if low_int_threshold < 1.:
-            low_th = int(img.max()*low_int_threshold)
+            low_th = int(img_8u.max()*low_int_threshold)
         else:
             low_th = int(low_int_threshold)
         _, img_bin = cv2.threshold(
-            img, low_th, maxval=maxval, type=cv2.THRESH_BINARY)
+            img_8u, low_th, maxval=255, type=cv2.THRESH_BINARY)
         _,contours,_ = cv2.findContours(
             img_bin.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         cont_areas = [ cv2.contourArea(cont) for cont in contours ]
         idx = np.argmax(cont_areas)  # find the largest contour, i.e. breast.
         breast_mask = cv2.drawContours(
-            np.zeros_like(img_bin), contours, idx, maxval, cv2.FILLED)
-        img_breast_only = cv2.bitwise_and(img, breast_mask)
+            np.zeros_like(img_bin), contours, idx, 255, cv2.FILLED)
+        # segment the breast.
+        img_breast_only = cv2.bitwise_and(img, img, mask=breast_mask)
         if crop:
             x,y,w,h = cv2.boundingRect(contours[idx])
             img_breast_only = img_breast_only[y:y+h, x:x+w]
