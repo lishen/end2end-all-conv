@@ -80,6 +80,21 @@ def get_roi_patches(img, key_pts, roi_size=(256, 256)):
     return patches
 
 
+def clust_kpts(key_pts, nb_clust, seed=12345):
+    '''Cluster key points and return cluster centroids
+    '''
+    from sklearn.cluster import KMeans
+
+    xy_coord = [ [kp.pt[0], kp.pt[1]] for kp in key_pts ]
+    xy_coord = np.array(xy_coord)
+    # K-means.
+    clt = KMeans(nb_clust, init='k-means++', n_init=10, max_iter=30, 
+                 random_state=seed)
+    clt.fit(xy_coord)
+
+    return clt.cluster_centers_
+
+
 class DMImgListIterator(Iterator):
     '''An iterator for a flatten image list
     '''
@@ -624,7 +639,8 @@ class DMCandidROIIterator(Iterator):
                 print "%s: blob detection found %d key points." % \
                     (self.filenames[fi], len(key_pts))
             if len(key_pts) > self.roi_per_img:
-                key_pts = rng.choice(key_pts, self.roi_per_img, replace=False)
+                # key_pts = rng.choice(key_pts, self.roi_per_img, replace=False)
+                key_pts = clust_kpts(key_pts, self.roi_per_img, self.seed)
             elif len(key_pts) > 3:
                 key_pts = rng.choice(key_pts, self.roi_per_img, replace=True)
             else:
