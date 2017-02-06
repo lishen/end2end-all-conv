@@ -695,6 +695,7 @@ class DMCandidROIIterator(Iterator):
             batch_w = np.ones((len(batch_x),))
         else:
             batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
+            batch_w = batch_w.ravel()
 
         # build batch of labels
         img_y = self.classes[index_array]
