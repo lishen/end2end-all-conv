@@ -50,22 +50,35 @@ class DMAucModelCheckpoint(Callback):
         if isinstance(self.test_data, tuple):
             y_true = self.test_data[1]
             y_pred = self.model.predict(self.test_data[0], self.batch_size)
+            if len(self.test_data) > 2:
+                weights = self.test_data[2]
+            else:
+                weights = None
         else:
             self.test_data.reset()
             samples_seen = 0
             y_list = []
             pred_list = []
+            wei_list = []
             while samples_seen < self.nb_test_samples:
-                X, y = next(self.test_data)
+                res = next(self.test_data)
+                if len(res) > 2:
+                    w = res[2]
+                    wei_list.append(w)
+                X, y = res[:2]
                 samples_seen += len(y)
                 y_list.append(y)
                 pred_list.append(self.model.predict_on_batch(X))
             y_true = np.concatenate(y_list)
             y_pred = np.concatenate(pred_list)
+            if len(wei_list) > 0:
+                weights = np.concatenate(wei_list)
+            else:
+                weights = None
         if len(np.unique(y_true)) == 1:
             auc = 0.
         else:
-            auc = roc_auc_score(y_true, y_pred)
+            auc = roc_auc_score(y_true, y_pred, sample_weight=weights)
         print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
         if auc > self.best_auc:
             self.best_epoch = epoch + 1
@@ -74,6 +87,6 @@ class DMAucModelCheckpoint(Callback):
                 self.model.save(self.filepath)
 
     def on_train_end(self, logs={}):
-        print ">>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
+        print "\n>>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
             (self.best_auc, self.best_epoch, self.filepath)
 
