@@ -599,7 +599,11 @@ class DMCandidROIIterator(Iterator):
         params.maxThreshold = int(blob_max_int*255)
         params.thresholdStep = blob_th_step
         # import pdb; pdb.set_trace()
-        self.blob_detector = cv2.SimpleBlobDetector_create(params)
+        ver = (cv2.__version__).split('.')
+        if int(ver[0]) < 3:
+            self.blob_detector = cv2.SimpleBlobDetector(params)
+        else:
+            self.blob_detector = cv2.SimpleBlobDetector_create(params)
 
         super(DMCandidROIIterator, self).__init__(
             self.nb_sample, img_per_batch, shuffle, seed)
