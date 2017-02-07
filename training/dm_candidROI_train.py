@@ -62,9 +62,12 @@ def run(img_folder, img_extension='dcm',
                              img_extension=img_extension)
     # Split data based on subjects.
     subj_list, subj_labs = meta_man.get_subj_labs()
-    subj_train, subj_test = train_test_split(
-        subj_list, test_size=val_size, random_state=random_seed, 
-        stratify=subj_labs)
+    if val_size < 0:  # do not split data.
+        subj_train = subj_test = subj_list
+    else:
+        subj_train, subj_test = train_test_split(
+            subj_list, test_size=val_size, random_state=random_seed, 
+            stratify=subj_labs)
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_test, lab_test = meta_man.get_flatten_img_list(subj_test)
 
