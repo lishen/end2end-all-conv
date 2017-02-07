@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from keras.callbacks import Callback
 import keras.backend as K
@@ -80,6 +81,7 @@ class DMAucModelCheckpoint(Callback):
         else:
             auc = roc_auc_score(y_true, y_pred, sample_weight=weights)
         print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+        sys.stdout.flush()
         if auc > self.best_auc:
             self.best_epoch = epoch + 1
             self.best_auc = auc
@@ -89,4 +91,5 @@ class DMAucModelCheckpoint(Callback):
     def on_train_end(self, logs={}):
         print "\n>>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
             (self.best_auc, self.best_epoch, self.filepath)
+        sys.stdout.flush()
 

@@ -1,4 +1,4 @@
-import os, argparse
+import os, argparse, sys
 import numpy as np
 from sklearn.model_selection import train_test_split
 from keras.callbacks import (
@@ -77,7 +77,7 @@ def run(img_folder, img_extension='dcm',
         # Fit feature-wise mean and std.
         img_fit,_ = meta_man.get_flatten_img_list(
             subj_train[:norm_fit_size])  # fit on a subset.
-        print ">>> Fit image generator <<<"
+        print ">>> Fit image generator <<<"; sys.stdout.flush()
         fit_generator = imgen_trainval.flow_from_candid_roi(
             img_fit,
             target_height=img_height, target_scale=img_scale,
@@ -91,6 +91,7 @@ def run(img_folder, img_extension='dcm',
         imgen_trainval.fit(fit_generator.next()[0])
         print "Estimates from %d images: mean=%.1f, std=%.1f." % \
             (len(img_fit), imgen_trainval.mean, imgen_trainval.std)
+        sys.stdout.flush()
     else:
         imgen_trainval.samplewise_center = True
         imgen_trainval.samplewise_std_normalization = True
@@ -107,7 +108,7 @@ def run(img_folder, img_extension='dcm',
     else:
         roi_clf = None
 
-    print ">>> Train image generator <<<"
+    print ">>> Train image generator <<<"; sys.stdout.flush()
     train_generator = imgen_trainval.flow_from_candid_roi(
         img_train, lab_train, 
         target_height=img_height, target_scale=img_scale,
@@ -120,7 +121,7 @@ def run(img_folder, img_extension='dcm',
         roi_clf=roi_clf, clf_bs=clf_bs,
         all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
 
-    print ">>> Validation image generator <<<"
+    print ">>> Validation image generator <<<"; sys.stdout.flush()
     val_generator = imgen_trainval.flow_from_candid_roi(
         img_test, lab_test, 
         target_height=img_height, target_scale=img_scale,
@@ -136,6 +137,7 @@ def run(img_folder, img_extension='dcm',
     nb_val_samples = len(img_test)*roi_per_img
     if load_val_ram:
         print "Loading validation data into RAM.",
+        sys.stdout.flush()
         samples_seen = 0
         X_list = []
         y_list = []
@@ -151,7 +153,7 @@ def run(img_folder, img_extension='dcm',
         if len(validation_set[0]) != nb_val_samples:
             raise Exception
         del [X_list, y_list, w_list]
-        print "Done."
+        print "Done."; sys.stdout.flush()
 
     # Load or create model.
     if resume_from is not None:
