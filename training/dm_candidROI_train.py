@@ -87,7 +87,7 @@ def run(img_folder, img_extension='dcm',
             low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
-            roi_clf=None)
+            roi_clf=None, seed=random_seed)
         imgen_trainval.fit(fit_generator.next()[0])
         print "Estimates from %d images: mean=%.1f, std=%.1f." % \
             (len(img_fit), imgen_trainval.mean, imgen_trainval.std)
@@ -130,7 +130,7 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
-        roi_clf=roi_clf, clf_bs=clf_bs)
+        roi_clf=roi_clf, clf_bs=clf_bs, seed=random_seed)
 
     # Load validation set into RAM.
     nb_val_samples = len(img_test)*roi_per_img
