@@ -5,6 +5,7 @@ from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
 import dm_inference as dminfer
 from dm_keras_ext import DMMetrics
+from dm_multi_gpu import make_parallel
 
 import warnings
 import exceptions
