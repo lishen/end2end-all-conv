@@ -650,12 +650,8 @@ class DMCandidROIIterator(Iterator):
             else:
                 # blob detection failed, randomly draw points from the image.
                 # import pdb; pdb.set_trace()
-                pt_x = rng.randint(self.roi_size[1]/2, 
-                                   img.shape[1] - self.roi_size[1]/2, 
-                                   self.roi_per_img)
-                pt_y = rng.randint(self.roi_size[1]/2, 
-                                   img.shape[0] - self.roi_size[0]/2,
-                                   self.roi_per_img)
+                pt_x = rng.randint(0, img.shape[1], self.roi_per_img)
+                pt_y = rng.randint(0, img.shape[0], self.roi_per_img)
                 key_pts = np.stack((pt_x, pt_y), axis=1)
 
             # get roi image patches.
