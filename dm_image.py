@@ -537,7 +537,7 @@ class DMCandidROIIterator(Iterator):
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-                 roi_clf=None, clf_bs=32,
+                 tf_graph=None, roi_clf=None, clf_bs=32,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -552,6 +552,7 @@ class DMCandidROIIterator(Iterator):
         self.dim_ordering = dim_ordering
         self.roi_per_img = roi_per_img
         self.roi_size = roi_size
+        self.tf_graph = tf_graph
         self.roi_clf = roi_clf
         self.clf_bs = clf_bs
         self.low_int_threshold = low_int_threshold
@@ -701,8 +702,9 @@ class DMCandidROIIterator(Iterator):
         if self.roi_clf is None:
             batch_w = np.ones((len(batch_x),))
         else:
-            batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
-            batch_w = batch_w.ravel()
+            with self.tf_graph.as_default():
+                batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
+                batch_w = batch_w.ravel()
 
         # build batch of labels
         if self.classes is None or self.class_mode is None:
@@ -809,7 +811,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-                 roi_clf=None, clf_bs=32,
+                 tf_graph=None, roi_clf=None, clf_bs=32,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -823,7 +825,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
-            roi_clf=roi_clf, clf_bs=clf_bs,
+            tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs,
             all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
             save_to_dir=save_to_dir, save_prefix=save_prefix, 
             save_format=save_format,

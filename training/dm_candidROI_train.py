@@ -7,6 +7,7 @@ from keras.callbacks import (
 )
 from keras.optimizers import SGD
 from keras.models import load_model
+import tensorflow as tf
 from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
 from dm_resnet import ResNetBuilder
@@ -105,8 +106,10 @@ def run(img_folder, img_extension='dcm',
                 'specificity': DMMetrics.specificity
             }
         )
+        graph = tf.get_default_graph()
     else:
         roi_clf = None
+        graph = None
 
     print ">>> Train image generator <<<"; sys.stdout.flush()
     train_generator = imgen_trainval.flow_from_candid_roi(
@@ -118,7 +121,7 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
-        roi_clf=roi_clf, clf_bs=clf_bs,
+        tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs,
         all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
@@ -131,7 +134,8 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
-        roi_clf=roi_clf, clf_bs=clf_bs, seed=random_seed)
+        tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, 
+        seed=random_seed)
 
     # Load validation set into RAM.
     nb_val_samples = len(img_test)*roi_per_img
