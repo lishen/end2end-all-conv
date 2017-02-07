@@ -530,7 +530,7 @@ class DMCandidROIIterator(Iterator):
     '''An iterator for candidate ROIs from mammograms
     '''
 
-    def __init__(self, img_list, lab_list, image_data_generator,
+    def __init__(self, image_data_generator, img_list, lab_list=None,
                  target_height=1024, target_scale=4095, gs_255=False, 
                  dim_ordering='default',
                  class_mode='binary', validation_mode=False,
@@ -579,11 +579,15 @@ class DMCandidROIIterator(Iterator):
         self.nb_sample = len(img_list)
         self.nb_class = 2
         self.filenames = list(img_list)
-        self.classes = np.array(lab_list)
-        nb_pos = np.sum(self.classes == 1)
-        nb_neg = np.sum(self.classes == 0)
-        if verbose:
-            print('There are %d cancer cases and %d normal cases.' % (nb_pos, nb_neg))
+        if lab_list is not None:
+            self.classes = np.array(lab_list)
+            nb_pos = np.sum(self.classes == 1)
+            nb_neg = np.sum(self.classes == 0)
+            if verbose:
+                print('There are %d cancer cases and %d normal cases.' % \
+                      (nb_pos, nb_neg))
+        else:
+            self.classes = None
 
         # Build a blob detector.
         params = cv2.SimpleBlobDetector_Params()
@@ -611,16 +615,19 @@ class DMCandidROIIterator(Iterator):
 
     def next(self):
         with self.lock:
-            index_array, current_index, current_batch_size = next(self.index_generator)
-            classes_ = self.classes[index_array]
+            index_array, current_index, current_batch_size = \
+                next(self.index_generator)
             # Obtain the random state for the current batch.
             rng = RandomState() if self.seed is None else \
                 RandomState(int(self.seed) + self.total_batches_seen)
-            while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
-                index_array, current_index, current_batch_size = next(self.index_generator)
+            if self.classes is not None:
                 classes_ = self.classes[index_array]
-                rng = RandomState() if self.seed is None else \
-                    RandomState(int(self.seed) + self.total_batches_seen)
+                while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
+                    index_array, current_index, current_batch_size = \
+                        next(self.index_generator)
+                    classes_ = self.classes[index_array]
+                    rng = RandomState() if self.seed is None else \
+                        RandomState(int(self.seed) + self.total_batches_seen)
 
         # The transformation of images is not under thread lock so it can 
         # be done in parallel
@@ -698,16 +705,19 @@ class DMCandidROIIterator(Iterator):
             batch_w = batch_w.ravel()
 
         # build batch of labels
-        img_y = self.classes[index_array]
-        batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
-        if self.class_mode == 'sparse':
-            batch_y = batch_y
-        elif self.class_mode == 'binary':
-            batch_y = batch_y.astype('float32')
-        elif self.class_mode == 'categorical':
-            batch_y = to_categorical(batch_y, self.nb_class)
-        else:
+        if self.classes is None or self.class_mode is None:
             return batch_x, batch_w
+        elif self.classes is not None:
+            img_y = self.classes[index_array]
+            batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
+            if self.class_mode == 'sparse':
+                batch_y = batch_y
+            elif self.class_mode == 'binary':
+                batch_y = batch_y.astype('float32')
+            elif self.class_mode == 'categorical':
+                batch_y = to_categorical(batch_y, self.nb_class)
+            else:
+                raise Exception  # this shall never happen.
         return batch_x, batch_y, batch_w
 
 
@@ -792,7 +802,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             verbose=verbose)
 
 
-    def flow_from_candid_roi(self, img_list, lab_list, 
+    def flow_from_candid_roi(self, img_list, lab_list=None,
                  target_height=1024, target_scale=4095, gs_255=False, 
                  dim_ordering='default',
                  class_mode='binary', validation_mode=False,
@@ -804,7 +814,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
         return DMCandidROIIterator(
-            img_list, lab_list, self,
+            self, img_list, lab_list, 
             target_height=target_height, target_scale=target_scale, 
             gs_255=gs_255, dim_ordering=dim_ordering,
             class_mode=class_mode, validation_mode=validation_mode,

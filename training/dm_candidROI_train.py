@@ -67,7 +67,7 @@ def run(img_folder, img_extension='dcm',
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_test, lab_test = meta_man.get_flatten_img_list(subj_test)
 
-    # Create image generators for train and val.
+    # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator(
         horizontal_flip=True, 
         vertical_flip=True)
@@ -75,11 +75,11 @@ def run(img_folder, img_extension='dcm',
         imgen_trainval.featurewise_center = True
         imgen_trainval.featurewise_std_normalization = True
         # Fit feature-wise mean and std.
-        img_fit, lab_fit = meta_man.get_flatten_img_list(
+        img_fit,_ = meta_man.get_flatten_img_list(
             subj_train[:norm_fit_size])  # fit on a subset.
         print ">>> Fit image generator <<<"
         fit_generator = imgen_trainval.flow_from_candid_roi(
-            img_fit, lab_fit, 
+            img_fit,
             target_height=img_height, target_scale=img_scale,
             class_mode=None, validation_mode=True, 
             img_per_batch=len(img_fit), roi_per_img=roi_per_img, 
@@ -95,6 +95,7 @@ def run(img_folder, img_extension='dcm',
         imgen_trainval.samplewise_center = True
         imgen_trainval.samplewise_std_normalization = True
 
+    # Load ROI classifier.
     if roi_state is not None:
         roi_clf = load_model(
             roi_state, 
@@ -105,6 +106,7 @@ def run(img_folder, img_extension='dcm',
         )
     else:
         roi_clf = None
+
     print ">>> Train image generator <<<"
     train_generator = imgen_trainval.flow_from_candid_roi(
         img_train, lab_train, 
@@ -151,7 +153,7 @@ def run(img_folder, img_extension='dcm',
         del [X_list, y_list, w_list]
         print "Done."
 
-    # Create model.
+    # Load or create model.
     if resume_from is not None:
         model = load_model(
             resume_from, 
