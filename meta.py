@@ -127,10 +127,12 @@ class DMMetaManager(object):
         return (img, lab)
 
 
-    def get_info_per_exam(self, exam):
+    def get_info_per_exam(self, exam, flatten_img_list=False):
         '''Get training-related info for each exam as a dict
         Args:
             exam (DataFrame): data for an exam.
+            flatten_img_list ([bool]): whether or not return a flatten image 
+                    list for each breast.
         Returns:
             A dict containing info for each breast: the cancer status for 
             each breast and the image paths to the CC and MLO views. If an 
@@ -165,25 +167,29 @@ class DMMetaManager(object):
                 cancerR = np.nan
         info['L']['cancer'] = cancerL
         info['R']['cancer'] = cancerR
-        info['L']['CC'] = None
-        info['R']['CC'] = None
-        info['L']['MLO'] = None
-        info['R']['MLO'] = None
-        for breast in exam_indexed.index.levels[0]:
-            for view in exam_indexed.loc[breast].index.levels[0]:
-                if view not in self.view_cat_dict:
-                    continue  # skip uncategorized view for now.
-                view_ = self.view_cat_dict[view]
-                fname_df = exam_indexed.loc[breast].loc[view][['filename']]
-                if fname_df.empty:
-                    continue
-                if info[breast][view_] is None:
-                    info[breast][view_] = fname_df
-                elif view == 'CC' or view == 'MLO':
-                    # Make sure canonical views are always on top.
-                    info[breast][view_] = fname_df.append(info[breast][view_])
-                else:
-                    info[breast][view_] = info[breast][view_].append(fname_df)
+        if flatten_img_list:
+            for breast in exam_indexed.index.levels[0]:
+                info[breast]['img'] = exam_indexed.loc[breast]['filename'].tolist()
+        else:
+            info['L']['CC'] = None
+            info['R']['CC'] = None
+            info['L']['MLO'] = None
+            info['R']['MLO'] = None
+            for breast in exam_indexed.index.levels[0]:
+                for view in exam_indexed.loc[breast].index.levels[0]:
+                    if view not in self.view_cat_dict:
+                        continue  # skip uncategorized view for now.
+                    view_ = self.view_cat_dict[view]
+                    fname_df = exam_indexed.loc[breast].loc[view][['filename']]
+                    if fname_df.empty:
+                        continue
+                    if info[breast][view_] is None:
+                        info[breast][view_] = fname_df
+                    elif view == 'CC' or view == 'MLO':
+                        # Make sure canonical views are always on top.
+                        info[breast][view_] = fname_df.append(info[breast][view_])
+                    else:
+                        info[breast][view_] = info[breast][view_].append(fname_df)
 
         return info
 
@@ -373,7 +379,8 @@ class DMMetaManager(object):
         return subj_list, lab_list
 
 
-    def get_flatten_exam_list(self, subj_list=None, meta=False):
+    def get_flatten_exam_list(self, subj_list=None, meta=False, 
+                              flatten_img_list=False):
         '''Get exam-level training data list
         Returns:
             A list of all exams for all subjects. Each element is a tuple of 
@@ -381,8 +388,11 @@ class DMMetaManager(object):
         '''
         exam_list = []
         for subj_id, ex_idx, exam_dat in self.exam_generator(subj_list):
-            exam_list.append( (subj_id, ex_idx, 
-                               self.get_info_per_exam(exam_dat)) )
+            exam_list.append(
+                (subj_id, ex_idx, 
+                 self.get_info_per_exam(
+                    exam_dat, flatten_img_list=flatten_img_list))
+            )
         return exam_list
 
 
@@ -601,7 +611,8 @@ class DMMetaManager(object):
         return summary_df
 
 
-    def get_last_exam_list(self, subj_list=None, meta=False):
+    def get_last_exam_list(self, subj_list=None, meta=False, 
+                           flatten_img_list=False):
         '''Get the last exam training data list
         Returns:
             A list of the last exams for each subject. Each element is a tuple 
@@ -609,8 +620,11 @@ class DMMetaManager(object):
         '''
         exam_list = []
         for subj_id, ex_idx, exam_dat in self.last_exam_generator(subj_list):
-            exam_list.append( (subj_id, ex_idx, 
-                               self.get_info_per_exam(exam_dat)) )
+            exam_list.append(
+                (subj_id, ex_idx, 
+                 self.get_info_per_exam(
+                    exam_dat, flatten_img_list=flatten_img_list))
+            )
         return exam_list
 
 
