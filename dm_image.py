@@ -712,6 +712,9 @@ class DMCandidROIIterator(Iterator):
         elif self.classes is not None:
             img_y = self.classes[index_array]
             batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
+            #### Experimental!! ####
+            batch_y[batch_w < .5] = 0
+            ########################
             if self.class_mode == 'sparse':
                 batch_y = batch_y
             elif self.class_mode == 'binary':
