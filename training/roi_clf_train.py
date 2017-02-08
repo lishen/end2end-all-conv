@@ -46,12 +46,12 @@ def run(x_train_fn, x_test_fn, y_train_fn, y_test_fn,
         imgen = ImageDataGenerator(
             samplewise_center=True,
             samplewise_std_normalization=True)
-    imgen.rotation_range=rotation_range
-    imgen.width_shift_range=width_shift_range
-    imgen.height_shift_range=height_shift_range
-    imgen.zoom_range=zoom_range
-    imgen.horizontal_flip=horizontal_flip
-    imgen.vertical_flip=vertical_flip
+    imgen.rotation_range = rotation_range
+    imgen.width_shift_range = width_shift_range
+    imgen.height_shift_range = height_shift_range
+    imgen.zoom_range = zoom_range
+    imgen.horizontal_flip = horizontal_flip
+    imgen.vertical_flip = vertical_flip
     train_generator = imgen.flow(X_train, y_train, batch_size=batch_size, 
                                  shuffle=True, seed=12345)
     
