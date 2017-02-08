@@ -14,6 +14,25 @@ import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
+
+def resize_img_dat(img_dat, img_size):
+    '''Resize a train or test image ndarray dataset
+    '''
+    import cv2
+
+    if img_dat.shape[1:3] != tuple(img_size):
+        resized_dat = np.zeros(
+            (img_dat.shape[0],) + tuple(img_size) + (img_dat.shape[3],) )
+        for i,img in enumerate(img_dat):
+            img_ = cv2.resize(
+                img, dsize=(img_size[1], img_size[0]), 
+                interpolation=cv2.INTER_CUBIC)
+            resized_dat[i] = img_.reshape(img_.shape + (img.shape[2],))
+        return resized_dat
+    else:
+        return img_dat
+
+
 def run(x_train_fn, x_test_fn, y_train_fn, y_test_fn, 
         img_size=[256, 256], do_featurewise_norm=True, 
         rotation_range=0, width_shift_range=.0, height_shift_range=.0,
@@ -33,6 +52,8 @@ def run(x_train_fn, x_test_fn, y_train_fn, y_test_fn,
     # =========== Load training data =============== #
     X_train = np.load(x_train_fn)
     X_test = np.load(x_test_fn)
+    X_train = resize_img_dat(X_train, img_size)
+    X_test = resize_img_dat(X_test, img_size)
     y_train = np.load(y_train_fn)
     y_test = np.load(y_test_fn)
 
@@ -46,12 +67,12 @@ def run(x_train_fn, x_test_fn, y_train_fn, y_test_fn,
         imgen = ImageDataGenerator(
             samplewise_center=True,
             samplewise_std_normalization=True)
-    imgen.rotation_range=rotation_range
-    imgen.width_shift_range=width_shift_range
-    imgen.height_shift_range=height_shift_range
-    imgen.zoom_range=zoom_range
-    imgen.horizontal_flip=horizontal_flip
-    imgen.vertical_flip=vertical_flip
+    imgen.rotation_range = rotation_range
+    imgen.width_shift_range = width_shift_range
+    imgen.height_shift_range = height_shift_range
+    imgen.zoom_range = zoom_range
+    imgen.horizontal_flip = horizontal_flip
+    imgen.vertical_flip = vertical_flip
     train_generator = imgen.flow(X_train, y_train, batch_size=batch_size, 
                                  shuffle=True, seed=12345)
     
