@@ -25,7 +25,7 @@ def run(img_folder, img_extension='dcm',
         img_per_batch=2, roi_per_img=32, roi_size=(256, 256), 
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-        roi_state=None, clf_bs=32,
+        more_augmentation=False, roi_state=None, clf_bs=32,
         patches_per_epoch=12800, nb_epoch=20, 
         all_neg_skip=0., pos_cls_weight=1.0,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
@@ -75,6 +75,12 @@ def run(img_folder, img_extension='dcm',
     imgen_trainval = DMImageDataGenerator(
         horizontal_flip=True, 
         vertical_flip=True)
+    if more_augmentation:
+        imgen_trainval.rotation_range = 90
+        imgen_trainval.width_shift_range = .25
+        imgen_trainval.height_shift_range = .25
+        imgen_trainval.zoom_range = [.8, 1.2]
+
     if do_featurewise_norm:
         imgen_trainval.featurewise_center = True
         imgen_trainval.featurewise_std_normalization = True
@@ -263,6 +269,9 @@ if __name__ == '__main__':
     parser.add_argument("--blob-min-int", dest="blob_min_int", type=float, default=.5)
     parser.add_argument("--blob-max-int", dest="blob_max_int", type=float, default=.85)
     parser.add_argument("--blob-th-step", dest="blob_th_step", type=int, default=10)
+    parser.add_argument("--more-augmentation", dest="more_augmentation", action="store_true")
+    parser.add_argument("--no-more-augmentation", dest="more_augmentation", action="store_false")
+    parser.set_defaults(more_augmentation=False)
     parser.add_argument("--roi-state", dest="roi_state", type=str, default=None)
     parser.add_argument("--no-roi-state", dest="roi_state", action="store_const", const=None)
     parser.add_argument("--clf-bs", dest="clf_bs", type=int, default=32)
@@ -315,6 +324,7 @@ if __name__ == '__main__':
         blob_min_int=args.blob_min_int,
         blob_max_int=args.blob_max_int,
         blob_th_step=args.blob_th_step,
+        more_augmentation=args.more_augmentation,
         roi_state=args.roi_state,
         clf_bs=args.clf_bs,
         patches_per_epoch=args.patches_per_epoch, 
