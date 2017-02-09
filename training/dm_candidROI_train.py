@@ -26,6 +26,7 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
         more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
+        pos_amp_factor=1.,
         patches_per_epoch=12800, nb_epoch=20, 
         all_neg_skip=0., pos_cls_weight=1.0,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
@@ -131,6 +132,7 @@ def run(img_folder, img_extension='dcm',
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
+        pos_amp_factor=pos_amp_factor,
         all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
@@ -144,6 +146,7 @@ def run(img_folder, img_extension='dcm',
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
+        pos_amp_factor=pos_amp_factor,
         seed=random_seed)
 
     # Load validation set into RAM.
@@ -276,6 +279,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-roi-state", dest="roi_state", action="store_const", const=None)
     parser.add_argument("--clf-bs", dest="clf_bs", type=int, default=32)
     parser.add_argument("--cutpoint", dest="cutpoint", type=float, default=.5)
+    parser.add_argument("--pos-amp-factor", dest="pos_amp_factor", type=float, default=1.)
     parser.add_argument("--patches-per-epoch", "-ppe", dest="patches_per_epoch", type=int, default=12800)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
@@ -329,6 +333,7 @@ if __name__ == '__main__':
         roi_state=args.roi_state,
         clf_bs=args.clf_bs,
         cutpoint=args.cutpoint,
+        pos_amp_factor=args.pos_amp_factor,
         patches_per_epoch=args.patches_per_epoch, 
         nb_epoch=args.nb_epoch, 
         all_neg_skip=args.all_neg_skip,

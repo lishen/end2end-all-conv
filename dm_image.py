@@ -538,6 +538,7 @@ class DMCandidROIIterator(Iterator):
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
+                 pos_amp_factor=1.,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -556,6 +557,9 @@ class DMCandidROIIterator(Iterator):
         self.roi_clf = roi_clf
         self.clf_bs = clf_bs
         self.cutpoint = cutpoint
+        if pos_amp_factor < 1.:
+            raise Exception('pos_amp_factor must not be less than 1.0')
+        self.pos_amp_factor = pos_amp_factor
         self.low_int_threshold = low_int_threshold
         # Always gray-scale.
         if self.dim_ordering == 'tf':
@@ -623,20 +627,32 @@ class DMCandidROIIterator(Iterator):
             rng = RandomState() if self.seed is None else \
                 RandomState(int(self.seed) + self.total_batches_seen)
             if self.classes is not None:
-                classes_ = self.classes[index_array]
-                while self.all_neg_skip > rng.uniform() and np.all(classes_ == 0):
+                batch_cls = self.classes[index_array]
+                while self.all_neg_skip > rng.uniform() and np.all(batch_cls == 0):
                     index_array, current_index, current_batch_size = \
                         next(self.index_generator)
-                    classes_ = self.classes[index_array]
+                    batch_cls = self.classes[index_array]
                     rng = RandomState() if self.seed is None else \
                         RandomState(int(self.seed) + self.total_batches_seen)
+            else:
+                batch_cls = None
 
         # The transformation of images is not under thread lock so it can 
         # be done in parallel
-        nb_roi = current_batch_size*self.roi_per_img
+        # Create a margin between pos and neg patches on cancer mammograms.
+        margin_creation = self.pos_amp_factor > 1. \
+                          and batch_cls is not None \
+                          and self.roi_clf is not None
+        if margin_creation:
+            roi_per_cancer = int(self.roi_per_img*self.pos_amp_factor)
+            nb_roi = (batch_cls==1).sum()*roi_per_cancer \
+                     + (batch_cls==0).sum()*self.roi_per_img
+        else:
+            nb_roi = current_batch_size*self.roi_per_img
         batch_x = np.zeros((nb_roi,) + self.image_shape, dtype='float32')
 
         # build batch of image data, read images first.
+        batch_idx = 0
         for ii, fi in enumerate(index_array):  # ii: image idx; fi: fname idx.
             img = read_resize_img(
                 self.filenames[fi], 
@@ -646,21 +662,26 @@ class DMCandidROIIterator(Iterator):
             # breast segmentation.
             img = prep.segment_breast(
                 img, low_int_threshold=self.low_int_threshold)
+            # choose number of roi.
+            if margin_creation and batch_cls[ii] == 1:
+                nb_img_roi = roi_per_cancer
+            else:
+                nb_img_roi = self.roi_per_img
             # blob detection.
             key_pts = self.blob_detector.detect((img/img.max()*255).astype('uint8'))
             if int(self.verbose) > 1:
                 print "%s: blob detection found %d key points." % \
                     (self.filenames[fi], len(key_pts))
-            if len(key_pts) > self.roi_per_img:
+            if len(key_pts) > nb_img_roi:
                 # key_pts = rng.choice(key_pts, self.roi_per_img, replace=False)
-                key_pts = clust_kpts(key_pts, self.roi_per_img, self.seed)
+                key_pts = clust_kpts(key_pts, nb_img_roi, self.seed)
             elif len(key_pts) > 3:
-                key_pts = rng.choice(key_pts, self.roi_per_img, replace=True)
+                key_pts = rng.choice(key_pts, nb_img_roi, replace=True)
             else:
                 # blob detection failed, randomly draw points from the image.
                 # import pdb; pdb.set_trace()
-                pt_x = rng.randint(0, img.shape[1], self.roi_per_img)
-                pt_y = rng.randint(0, img.shape[0], self.roi_per_img)
+                pt_x = rng.randint(0, img.shape[1], nb_img_roi)
+                pt_y = rng.randint(0, img.shape[0], nb_img_roi)
                 key_pts = np.stack((pt_x, pt_y), axis=1)
 
             # get roi image patches.
@@ -675,7 +696,9 @@ class DMCandidROIIterator(Iterator):
                     (roi_patches.shape[0], roi_patches.shape[1], 
                      roi_patches.shape[2], 1))
 
-            batch_x[ii*self.roi_per_img:(ii+1)*self.roi_per_img] = xs
+            # import pdb; pdb.set_trace()
+            batch_x[batch_idx:batch_idx+nb_img_roi] = xs
+            batch_idx += nb_img_roi
 
         # transform and standardize.
         for i, x in enumerate(batch_x):
@@ -707,12 +730,36 @@ class DMCandidROIIterator(Iterator):
                 batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
                 batch_w = batch_w.ravel()
 
+        # use ROI prob score to mask patches.
+        if margin_creation:
+            batch_mask = np.ones_like(batch_w, dtype='uint8')
+            batch_idx = 0
+            for cls_ in batch_cls:
+                if cls_ == 1:
+                    nb_img_roi = roi_per_cancer
+                    img_w = batch_w[batch_idx:batch_idx+nb_img_roi]
+                    img_m = np.ones_like(img_w, dtype='uint8')
+                    # filter out low score patches.
+                    img_m[img_w < self.cutpoint] = 0
+                    # add negative patches.
+                    nb_neg_patches = int(self.roi_per_img - img_m.sum())
+                    nb_neg_patches = 0 if nb_neg_patches < 0 else nb_neg_patches
+                    img_m[np.argsort(img_w)[:nb_neg_patches]] = 1
+                    batch_mask[batch_idx:batch_idx+nb_img_roi] = img_m
+                else:
+                    nb_img_roi = self.roi_per_img
+                batch_idx += nb_img_roi
+            batch_mask = batch_mask.astype('bool')
+            batch_x = batch_x[batch_mask]
+            batch_w = batch_w[batch_mask]
+
         # build batch of labels
         if self.classes is None or self.class_mode is None:
             return batch_x, batch_w
         elif self.classes is not None:
             img_y = self.classes[index_array]
             batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
+            # Set low score patches to negative.
             batch_y[batch_w < self.cutpoint] = 0
             if self.class_mode == 'sparse':
                 batch_y = batch_y
@@ -814,6 +861,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
+                 pos_amp_factor=1.,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -828,6 +876,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
             tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
+            pos_amp_factor=pos_amp_factor,
             all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
             save_to_dir=save_to_dir, save_prefix=save_prefix, 
             save_format=save_format,
