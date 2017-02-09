@@ -537,7 +537,7 @@ class DMCandidROIIterator(Iterator):
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-                 tf_graph=None, roi_clf=None, clf_bs=32,
+                 tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -555,6 +555,7 @@ class DMCandidROIIterator(Iterator):
         self.tf_graph = tf_graph
         self.roi_clf = roi_clf
         self.clf_bs = clf_bs
+        self.cutpoint = cutpoint
         self.low_int_threshold = low_int_threshold
         # Always gray-scale.
         if self.dim_ordering == 'tf':
@@ -712,9 +713,7 @@ class DMCandidROIIterator(Iterator):
         elif self.classes is not None:
             img_y = self.classes[index_array]
             batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
-            #### Experimental!! ####
-            batch_y[batch_w < .5] = 0
-            ########################
+            batch_y[batch_w < self.cutpoint] = 0
             if self.class_mode == 'sparse':
                 batch_y = batch_y
             elif self.class_mode == 'binary':
@@ -814,7 +813,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-                 tf_graph=None, roi_clf=None, clf_bs=32,
+                 tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -828,7 +827,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
-            tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs,
+            tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
             all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
             save_to_dir=save_to_dir, save_prefix=save_prefix, 
             save_format=save_format,
