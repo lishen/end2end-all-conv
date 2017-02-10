@@ -538,7 +538,7 @@ class DMCandidROIIterator(Iterator):
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
-                 pos_amp_factor=1.,
+                 pos_amp_factor=1., return_sample_weight=True,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -560,6 +560,7 @@ class DMCandidROIIterator(Iterator):
         if pos_amp_factor < 1.:
             raise Exception('pos_amp_factor must not be less than 1.0')
         self.pos_amp_factor = pos_amp_factor
+        self.return_sample_weight = return_sample_weight
         self.low_int_threshold = low_int_threshold
         # Always gray-scale.
         if self.dim_ordering == 'tf':
@@ -755,7 +756,10 @@ class DMCandidROIIterator(Iterator):
 
         # build batch of labels
         if self.classes is None or self.class_mode is None:
-            return batch_x, batch_w
+            if self.return_sample_weight:
+                return batch_x, batch_w
+            else:
+                return batch_x
         elif self.classes is not None:
             img_y = self.classes[index_array]
             batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
@@ -769,7 +773,10 @@ class DMCandidROIIterator(Iterator):
                 batch_y = to_categorical(batch_y, self.nb_class)
             else:
                 raise Exception  # this shall never happen.
-        return batch_x, batch_y, batch_w
+        if self.return_sample_weight:
+            return batch_x, batch_y, batch_w
+        else:
+            return batch_x, batch_y
 
 
 class DMImageDataGenerator(ImageDataGenerator):
@@ -861,7 +868,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
-                 pos_amp_factor=1.,
+                 pos_amp_factor=1., return_sample_weight=True,
                  all_neg_skip=0., shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
@@ -876,7 +883,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
             tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-            pos_amp_factor=pos_amp_factor,
+            pos_amp_factor=pos_amp_factor, return_sample_weight=return_sample_weight,
             all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
             save_to_dir=save_to_dir, save_prefix=save_prefix, 
             save_format=save_format,
