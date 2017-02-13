@@ -133,6 +133,7 @@ def run(img_folder, img_extension='dcm',
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
         pos_amp_factor=pos_amp_factor, return_sample_weight=return_sample_weight,
+        pos_cls_weight=pos_cls_weight,
         all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
@@ -146,8 +147,8 @@ def run(img_folder, img_extension='dcm',
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-        pos_amp_factor=2.0, return_sample_weight=True,
-        seed=random_seed)
+        pos_amp_factor=2.0, return_sample_weight=True, 
+        pos_cls_weight=pos_cls_weight, seed=random_seed)
     # !!! The pos_amp_factor for val generator is hard-coded here !!! #
 
     # Load validation set into RAM.
