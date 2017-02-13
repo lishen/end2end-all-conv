@@ -164,8 +164,8 @@ def run(img_folder, img_extension='dcm',
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-        pos_amp_factor=2.0, return_sample_weight=True, 
-        pos_cls_weight=pos_cls_weight, seed=random_seed)
+        pos_amp_factor=2.0, return_sample_weight=False, 
+        pos_cls_weight=1.0, seed=random_seed)
     # !!! The pos_amp_factor for val generator is hard-coded here !!! #
 
     # Load validation set into RAM.
@@ -176,18 +176,20 @@ def run(img_folder, img_extension='dcm',
         samples_seen = 0
         X_list = []
         y_list = []
-        w_list = []
+        # w_list = []
         while samples_seen < nb_val_samples:
-            X,y,w = val_generator.next()
+            # X,y,w = val_generator.next()
+            X,y = val_generator.next()
             X_list.append(X)
             y_list.append(y)
-            w_list.append(w)
+            # w_list.append(w)
             samples_seen += len(y)
-        validation_set = (np.concatenate(X_list), np.concatenate(y_list), 
-                          np.concatenate(w_list))
+        validation_set = (np.concatenate(X_list), np.concatenate(y_list))
+                          # np.concatenate(w_list))
         if len(validation_set[0]) != nb_val_samples:
             raise Exception
-        del [X_list, y_list, w_list]
+        # del [X_list, y_list, w_list]
+        del [X_list, y_list]
         print "Done."; sys.stdout.flush()
 
     # Load or create model.
