@@ -33,7 +33,7 @@ def run(img_folder, img_extension='dcm',
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
-        val_size=.2, lr_patience=3, es_patience=10, 
+        val_size=.2, val_neg_vs_pos_ratio=None, lr_patience=3, es_patience=10, 
         resume_from=None, net='resnet50', load_val_ram=False,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
@@ -71,6 +71,23 @@ def run(img_folder, img_extension='dcm',
             stratify=subj_labs)
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_test, lab_test = meta_man.get_flatten_img_list(subj_test)
+
+    # Sample validation set to desired ratio.
+    if val_neg_vs_pos_ratio is not None:
+        rng = np.random.RandomState(random_seed)
+        img_test = np.array(img_test)
+        lab_test = np.array(lab_test)
+        pos_idx = np.where(lab_test==1)[0]
+        neg_idx = np.where(lab_test==0)[0]
+        nb_neg_desired = int(len(pos_idx)*val_neg_vs_pos_ratio)
+        if nb_neg_desired > len(neg_idx):
+            replace = True
+        else:
+            replace = False
+        sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=replace)
+        all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+        img_test = img_test[all_idx].tolist()
+        lab_test = lab_test[all_idx].tolist()
 
     # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator(
@@ -301,6 +318,9 @@ if __name__ == '__main__':
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
+    parser.add_argument("--val-nvp-ratio", dest="val_neg_vs_pos_ratio", type=float)
+    parser.set_defaults(val_neg_vs_pos_ratio=None)
+    parser.add_argument("--no-val-nvp-ratio", dest="val_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=3)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
     parser.add_argument("--resume-from", "-rf", dest="resume_from", type=str, default=None)
@@ -356,6 +376,7 @@ if __name__ == '__main__':
         hidden_dropout=args.hidden_dropout,
         init_lr=args.init_lr,
         val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
+        val_neg_vs_pos_ratio=args.val_neg_vs_pos_ratio,
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
         resume_from=args.resume_from,
