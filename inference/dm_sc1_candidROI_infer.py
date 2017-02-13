@@ -18,7 +18,7 @@ def run(img_folder, img_height=1024, img_scale=4095,
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
         do_featurewise_norm=True, featurewise_mean=884.7, featurewise_std=745.3, 
         img_tsv='./metadata/images_crosswalk_prediction.tsv', exam_tsv=None,
-        dl_state=None, dl_bs=32, validation_mode=False,
+        dl_state=None, dl_bs=32, nb_top_avg=1, validation_mode=False,
         out_pred='./output/predictions.tsv'):
     '''Run SC1 inference using the candidate ROI approach
     Notes: 
@@ -97,8 +97,10 @@ def run(img_folder, img_height=1024, img_scale=4095,
             predR_arr = pred_img_list(exam['R']['img'])
         except KeyError:
             predR_arr = np.array([.0])
-        predL = predL_arr.max()
-        predR = predR_arr.max()
+        predL_arr.sort()
+        predR_arr.sort()
+        predL = predL_arr[-nb_top_avg:].mean()
+        predR = predR_arr[-nb_top_avg:].mean()
 
         try:
             cancerL = int(exam['L']['cancer'])
@@ -146,6 +148,7 @@ if __name__ == '__main__':
     parser.set_defaults(exam_tsv=None)
     parser.add_argument("--dl-state", "-ds", dest="dl_state", type=str)
     parser.add_argument("--dl-bs", "-bs", dest="dl_bs", type=int, default=32)
+    parser.add_argument("--nb-top-avg", dest="nb_top_avg", type=int, default=1)
     parser.add_argument("--validation-mode", dest="validation_mode", action="store_true")
     parser.add_argument("--no-validation-mode", dest="validation_mode", action="store_false")
     parser.set_defaults(validation_mode=False)
@@ -170,6 +173,7 @@ if __name__ == '__main__':
         exam_tsv=args.exam_tsv,
         dl_state=args.dl_state,
         dl_bs=args.dl_bs,
+        nb_top_avg=args.nb_top_avg,
         validation_mode=args.validation_mode,
         out_pred=args.out_pred
     )
