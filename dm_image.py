@@ -741,13 +741,16 @@ class DMCandidROIIterator(Iterator):
                 if cls_ == 1:
                     nb_img_roi = roi_per_cancer
                     img_w = batch_w[batch_idx:batch_idx+nb_img_roi]
-                    img_m = np.ones_like(img_w, dtype='uint8')
+                    w_sorted_idx = np.argsort(img_w)
+                    img_m = np.ones_like(img_w, dtype='uint8')  # per img mask.
                     # filter out low score patches.
                     img_m[img_w < self.cutpoint] = 0
+                    # filter out low ranked patches.
+                    img_m[w_sorted_idx[:-self.roi_per_img]] = 0
                     # add negative patches.
                     nb_neg_patches = int(self.roi_per_img - img_m.sum())
                     nb_neg_patches = 0 if nb_neg_patches < 0 else nb_neg_patches
-                    img_m[np.argsort(img_w)[:nb_neg_patches]] = 1
+                    img_m[w_sorted_idx[:nb_neg_patches]] = 1
                     batch_mask[batch_idx:batch_idx+nb_img_roi] = img_m
                 else:
                     nb_img_roi = self.roi_per_img
