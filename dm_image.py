@@ -729,9 +729,14 @@ class DMCandidROIIterator(Iterator):
         if self.roi_clf is None:
             batch_w = np.ones((len(batch_x),))
         else:
-            with self.tf_graph.as_default():
-                batch_w = self.roi_clf.predict(batch_x, batch_size=self.clf_bs)
-                batch_w = batch_w.ravel()
+            if self.tf_graph is not None:
+                with self.tf_graph.as_default():
+                    batch_w = self.roi_clf.predict(batch_x, 
+                                                   batch_size=self.clf_bs)
+            else:
+                batch_w = self.roi_clf.predict(batch_x, 
+                                               batch_size=self.clf_bs)
+            batch_w = batch_w.ravel()
 
         # use ROI prob score to mask patches.
         if margin_creation:
