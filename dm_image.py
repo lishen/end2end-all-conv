@@ -745,6 +745,8 @@ class DMCandidROIIterator(Iterator):
                     img_m = np.ones_like(img_w, dtype='uint8')  # per img mask.
                     # filter out low score patches.
                     img_m[img_w < self.cutpoint] = 0
+                    # add back the max scored patch (in case no one passes cutpoint).
+                    img_m[w_sorted_idx[-1]] = 1
                     # filter out low ranked patches.
                     img_m[w_sorted_idx[:-self.roi_per_img]] = 0
                     # add negative patches.
@@ -765,6 +767,14 @@ class DMCandidROIIterator(Iterator):
             batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
             # Set low score patches to negative.
             batch_y[batch_w < self.cutpoint] = 0
+            # Add back the max scored patch (in case no one passes cutpoint).
+            for ii,y in enumerate(img_y):
+                if y == 1:
+                    img_idx = ii*self.roi_per_img
+                    img_w = batch_w[img_idx:img_idx+self.roi_per_img]
+                    max_w_idx = np.argmax(img_w)
+                    batch_y[img_idx + max_w_idx] = 1
+            # Adjust positive patch weights.
             batch_w[batch_y==1] *= self.pos_cls_weight
 
         # build batch of labels
