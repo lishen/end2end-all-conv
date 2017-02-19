@@ -98,7 +98,9 @@ def run(img_folder, img_height=1024, img_scale=4095,
         # import pdb; pdb.set_trace()
         pred = model.predict(roi_dat, batch_size=dl_bs).ravel()
         if roi_clf is not None:
-            return np.average(pred, weights=roi_w)
+            # return np.average(pred, weights=roi_w)
+            # import pdb; pdb.set_trace()
+            return pred[np.argmax(roi_w)]
         elif img_voting:
             pred = pred.reshape((-1, roi_per_img))
             img_preds = [ np.sort(row)[-nb_top_avg:].mean() for row in pred ]
