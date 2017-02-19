@@ -23,6 +23,7 @@ def run(img_folder, img_extension='dcm',
         img_height=1024, img_scale=4095, 
         do_featurewise_norm=True, norm_fit_size=10,
         img_per_batch=2, roi_per_img=32, roi_size=(256, 256), 
+        one_patch_mode=False,
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
         more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
@@ -144,7 +145,7 @@ def run(img_folder, img_extension='dcm',
         target_height=img_height, target_scale=img_scale,
         class_mode='binary', validation_mode=False, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
-        roi_size=roi_size,
+        roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
@@ -159,7 +160,7 @@ def run(img_folder, img_extension='dcm',
         target_height=img_height, target_scale=img_scale,
         class_mode='binary', validation_mode=True, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
-        roi_size=roi_size,
+        roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
@@ -169,7 +170,10 @@ def run(img_folder, img_extension='dcm',
     # !!! The pos_amp_factor for val generator is hard-coded here !!! #
 
     # Load validation set into RAM.
-    nb_val_samples = len(img_test)*roi_per_img
+    if one_patch_mode:
+        nb_val_samples = len(img_test)
+    else:
+        nb_val_samples = len(img_test)*roi_per_img
     if load_val_ram:
         print "Loading validation data into RAM.",
         sys.stdout.flush()
@@ -288,6 +292,9 @@ if __name__ == '__main__':
     parser.add_argument("--img-per-batch", "-ipb", dest="img_per_batch", type=int, default=2)
     parser.add_argument("--roi-per-img", "-rpi", dest="roi_per_img", type=int, default=32)
     parser.add_argument("--roi-size", dest="roi_size", nargs=2, type=int, default=[256, 256])
+    parser.add_argument("--one-patch-mode", dest="one_patch_mode", action="store_true")
+    parser.add_argument("--no-one-patch-mode", dest="one_patch_mode", action="store_false")
+    parser.set_defaults(one_patch_mode=False)
     parser.add_argument("--low-int-threshold", dest="low_int_threshold", type=float, default=.05)
     parser.add_argument("--blob-min-area", dest="blob_min_area", type=int, default=3)
     parser.add_argument("--blob-min-int", dest="blob_min_int", type=float, default=.5)
@@ -351,6 +358,7 @@ if __name__ == '__main__':
         img_per_batch=args.img_per_batch,
         roi_per_img=args.roi_per_img,
         roi_size=tuple(args.roi_size),
+        one_patch_mode=args.one_patch_mode,
         low_int_threshold=args.low_int_threshold,
         blob_min_area=args.blob_min_area,
         blob_min_int=args.blob_min_int,
@@ -391,5 +399,6 @@ if __name__ == '__main__':
     )
     print "\n>>> Model training options: <<<\n", run_opts, "\n"
     run(args.img_folder, **run_opts)
+
 
 

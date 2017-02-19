@@ -535,6 +535,7 @@ class DMCandidROIIterator(Iterator):
                  dim_ordering='default',
                  class_mode='binary', validation_mode=False,
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
+                 one_patch_mode=False,
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
@@ -554,6 +555,9 @@ class DMCandidROIIterator(Iterator):
         self.dim_ordering = dim_ordering
         self.roi_per_img = roi_per_img
         self.roi_size = roi_size
+        self.one_patch_mode = one_patch_mode
+        if one_patch_mode:
+            pos_amp_factor = 1.
         self.tf_graph = tf_graph
         self.roi_clf = roi_clf
         self.clf_bs = clf_bs
@@ -643,9 +647,12 @@ class DMCandidROIIterator(Iterator):
         # The transformation of images is not under thread lock so it can 
         # be done in parallel
         # Create a margin between pos and neg patches on cancer mammograms.
-        margin_creation = self.pos_amp_factor > 1. \
-                          and batch_cls is not None \
-                          and self.roi_clf is not None
+        if self.one_patch_mode:
+            margin_creation = False
+        else:
+            margin_creation = self.pos_amp_factor > 1. \
+                              and batch_cls is not None \
+                              and self.roi_clf is not None
         if margin_creation:
             roi_per_cancer = int(self.roi_per_img*self.pos_amp_factor)
             nb_roi = (batch_cls==1).sum()*roi_per_cancer \
@@ -765,20 +772,32 @@ class DMCandidROIIterator(Iterator):
             batch_mask = batch_mask.astype('bool')
             batch_x = batch_x[batch_mask]
             batch_w = batch_w[batch_mask]
+        elif self.one_patch_mode:
+            wei_mat = batch_w.reshape((-1, self.roi_per_img))
+            max_wei_idx = np.argmax(wei_mat, axis=1)
+            max_wei_idx += np.arange(wei_mat.shape[0])*self.roi_per_img
+            batch_mask = np.zeros_like(batch_w, dtype='bool')
+            batch_mask[max_wei_idx] = True
+            batch_x = batch_x[batch_mask]
+            batch_w = batch_w[batch_mask]
 
         # adjust sample weights for positive class.
         if self.classes is not None:
             img_y = self.classes[index_array]
-            batch_y = np.array([ [y]*self.roi_per_img for y in img_y ]).ravel()
-            # Set low score patches to negative.
-            batch_y[batch_w < self.cutpoint] = 0
-            # Add back the max scored patch (in case no one passes cutpoint).
-            for ii,y in enumerate(img_y):
-                if y == 1:
-                    img_idx = ii*self.roi_per_img
-                    img_w = batch_w[img_idx:img_idx+self.roi_per_img]
-                    max_w_idx = np.argmax(img_w)
-                    batch_y[img_idx + max_w_idx] = 1
+            if self.one_patch_mode:
+                batch_y = img_y
+            else:
+                batch_y = np.array([ [y]*self.roi_per_img 
+                                     for y in img_y ]).ravel()
+                # Set low score patches to negative.
+                batch_y[batch_w < self.cutpoint] = 0
+                # Add back the max scored patch (in case no one passes cutpoint).
+                for ii,y in enumerate(img_y):
+                    if y == 1:
+                        img_idx = ii*self.roi_per_img
+                        img_w = batch_w[img_idx:img_idx+self.roi_per_img]
+                        max_w_idx = np.argmax(img_w)
+                        batch_y[img_idx + max_w_idx] = 1
             # Adjust positive patch weights.
             batch_w[batch_y==1] *= self.pos_cls_weight
 
@@ -889,6 +908,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                  dim_ordering='default',
                  class_mode='binary', validation_mode=False,
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
+                 one_patch_mode=False,
                  low_int_threshold=.05, blob_min_area=3, 
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
@@ -903,7 +923,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             gs_255=gs_255, dim_ordering=dim_ordering,
             class_mode=class_mode, validation_mode=validation_mode,
             img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
-            roi_size=roi_size,
+            roi_size=roi_size, one_patch_mode=one_patch_mode,
             low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
