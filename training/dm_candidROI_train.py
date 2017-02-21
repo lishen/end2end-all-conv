@@ -27,9 +27,9 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
         more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
-        pos_amp_factor=1., return_sample_weight=True,
+        amp_factor=1., return_sample_weight=True,
         patches_per_epoch=12800, nb_epoch=20, 
-        all_neg_skip=0., pos_cls_weight=1.0,
+        all_neg_skip=0., pos_cls_weight=1.0, neg_cls_weight=1.0,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
@@ -143,31 +143,31 @@ def run(img_folder, img_extension='dcm',
     train_generator = imgen_trainval.flow_from_candid_roi(
         img_train, lab_train, 
         target_height=img_height, target_scale=img_scale,
-        class_mode='binary', validation_mode=False, 
+        class_mode='categorical', validation_mode=False, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
         roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-        pos_amp_factor=pos_amp_factor, return_sample_weight=return_sample_weight,
-        pos_cls_weight=pos_cls_weight,
+        amp_factor=amp_factor, return_sample_weight=return_sample_weight,
+        pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
         all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
     val_generator = imgen_trainval.flow_from_candid_roi(
         img_test, lab_test, 
         target_height=img_height, target_scale=img_scale,
-        class_mode='binary', validation_mode=True, 
+        class_mode='categorical', validation_mode=True, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
         roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-        pos_amp_factor=2.0, return_sample_weight=False, 
-        pos_cls_weight=1.0, seed=random_seed)
-    # !!! The pos_amp_factor for val generator is hard-coded here !!! #
+        amp_factor=amp_factor, return_sample_weight=return_sample_weight, 
+        pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
+        seed=random_seed)
 
     # Load validation set into RAM.
     if one_patch_mode:
@@ -180,56 +180,57 @@ def run(img_folder, img_extension='dcm',
         samples_seen = 0
         X_list = []
         y_list = []
-        # w_list = []
+        w_list = []
         while samples_seen < nb_val_samples:
-            # X,y,w = val_generator.next()
-            X,y = val_generator.next()
+            try:
+                X,y,w = val_generator.next()
+                w_list.append(w)
+            except ValueError:
+                X,y = val_generator.next()
             X_list.append(X)
             y_list.append(y)
-            # w_list.append(w)
             samples_seen += len(y)
-        validation_set = (np.concatenate(X_list), np.concatenate(y_list))
-                          # np.concatenate(w_list))
+        try:
+            validation_set = (np.concatenate(X_list), 
+                              np.concatenate(y_list),
+                              np.concatenate(w_list))
+        except ValueError:
+            validation_set = (np.concatenate(X_list), 
+                              np.concatenate(y_list))
+
         if len(validation_set[0]) != nb_val_samples:
             raise Exception
-        # del [X_list, y_list, w_list]
-        del [X_list, y_list]
+        del [X_list, y_list, w_list]
         print "Done."; sys.stdout.flush()
 
     # Load or create model.
     if resume_from is not None:
-        model = load_model(
-            resume_from, 
-            custom_objects={
-                'sensitivity': DMMetrics.sensitivity, 
-                'specificity': DMMetrics.specificity
-            }
-        )
+        model = load_model(resume_from)
     else:
         builder = ResNetBuilder
         if net == 'resnet18':
             model = builder.build_resnet_18(
-                (1, roi_size[0], roi_size[1]), 1, nb_init_filter, init_filter_size, 
+                (1, roi_size[0], roi_size[1]), 3, nb_init_filter, init_filter_size, 
                 init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
                 inp_dropout, hidden_dropout)
         elif net == 'resnet34':
             model = builder.build_resnet_34(
-                (1, roi_size[0], roi_size[1]), 1, nb_init_filter, init_filter_size, 
+                (1, roi_size[0], roi_size[1]), 3, nb_init_filter, init_filter_size, 
                 init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
                 inp_dropout, hidden_dropout)
         elif net == 'resnet50':
             model = builder.build_resnet_50(
-                (1, roi_size[0], roi_size[1]), 1, nb_init_filter, init_filter_size, 
+                (1, roi_size[0], roi_size[1]), 3, nb_init_filter, init_filter_size, 
                 init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
                 inp_dropout, hidden_dropout)
         elif net == 'resnet101':
             model = builder.build_resnet_101(
-                (1, roi_size[0], roi_size[1]), 1, nb_init_filter, init_filter_size, 
+                (1, roi_size[0], roi_size[1]), 3, nb_init_filter, init_filter_size, 
                 init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
                 inp_dropout, hidden_dropout)
         elif net == 'resnet152':
             model = builder.build_resnet_152(
-                (1, roi_size[0], roi_size[1]), 1, nb_init_filter, init_filter_size, 
+                (1, roi_size[0], roi_size[1]), 3, nb_init_filter, init_filter_size, 
                 init_conv_stride, pool_size, pool_stride, weight_decay, alpha, l1_ratio, 
                 inp_dropout, hidden_dropout)
     
@@ -238,11 +239,12 @@ def run(img_folder, img_extension='dcm',
 
     # Model training.
     sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
-    model.compile(optimizer=sgd, loss='binary_crossentropy', 
-                  metrics=[DMMetrics.sensitivity, DMMetrics.specificity])
+    model.compile(optimizer=sgd, loss='categorical_crossentropy', 
+                  metrics=['accuracy', 'precision', 'recall'])
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
-    early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, verbose=1)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
+                                   verbose=1)
     if load_val_ram:
         auc_checkpointer = DMAucModelCheckpoint(
             best_model, validation_set, batch_size=clf_bs)
@@ -253,7 +255,7 @@ def run(img_folder, img_extension='dcm',
         train_generator, 
         samples_per_epoch=patches_per_epoch, 
         nb_epoch=nb_epoch,
-        class_weight={ 0: 1.0, 1: pos_cls_weight },
+        class_weight={ 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight },
         validation_data=validation_set if load_val_ram else val_generator, 
         nb_val_samples=nb_val_samples, 
         callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
@@ -264,13 +266,15 @@ def run(img_folder, img_extension='dcm',
     # Training report.
     min_loss_locs, = np.where(hist.history['val_loss'] == min(hist.history['val_loss']))
     best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
-    best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
-    best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
+    # best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
+    # best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
+    best_val_accuracy = hist.history['val_acc'][min_loss_locs[0]]
     print "\n==== Training summary ===="
     print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
     print "Best val loss:", best_val_loss
-    print "Best val sensitivity:", best_val_sensitivity
-    print "Best val specificity:", best_val_specificity
+    # print "Best val sensitivity:", best_val_sensitivity
+    # print "Best val specificity:", best_val_specificity
+    print "Best val accuracy:", best_val_accuracy
     
     if final_model != "NOSAVE":
         model.save(final_model)
@@ -307,7 +311,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-roi-state", dest="roi_state", action="store_const", const=None)
     parser.add_argument("--clf-bs", dest="clf_bs", type=int, default=32)
     parser.add_argument("--cutpoint", dest="cutpoint", type=float, default=.5)
-    parser.add_argument("--pos-amp-factor", dest="pos_amp_factor", type=float, default=1.)
+    parser.add_argument("--amp-factor", dest="amp_factor", type=float, default=1.)
     parser.add_argument("--return-sample-weight", dest="return_sample_weight", action="store_true")
     parser.add_argument("--no-return-sample-weight", dest="return_sample_weight", action="store_false")
     parser.set_defaults(return_sample_weight=True)
@@ -315,6 +319,7 @@ if __name__ == '__main__':
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
     parser.add_argument("--pos-class-weight", "-pcw", dest="pos_cls_weight", type=float, default=1.0)
+    parser.add_argument("--neg-class-weight", "-ncw", dest="neg_cls_weight", type=float, default=1.0)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=32)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=5)
     parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
@@ -368,12 +373,13 @@ if __name__ == '__main__':
         roi_state=args.roi_state,
         clf_bs=args.clf_bs,
         cutpoint=args.cutpoint,
-        pos_amp_factor=args.pos_amp_factor,
+        amp_factor=args.amp_factor,
         return_sample_weight=args.return_sample_weight,
         patches_per_epoch=args.patches_per_epoch, 
         nb_epoch=args.nb_epoch, 
         all_neg_skip=args.all_neg_skip,
         pos_cls_weight=args.pos_cls_weight,
+        neg_cls_weight=args.neg_cls_weight,
         nb_init_filter=args.nb_init_filter, 
         init_filter_size=args.init_filter_size, 
         init_conv_stride=args.init_conv_stride, 

@@ -31,7 +31,8 @@ class DMAucModelCheckpoint(Callback):
     '''Model checkpointer using AUROC score
     '''
 
-    def __init__(self, filepath, test_data, nb_test_samples=None, batch_size=None):
+    def __init__(self, filepath, test_data, nb_test_samples=None, 
+                 batch_size=None):
         super(DMAucModelCheckpoint, self).__init__()
         self.filepath = filepath
         self.test_data = test_data
@@ -46,6 +47,7 @@ class DMAucModelCheckpoint(Callback):
         self.batch_size = batch_size
         self.best_epoch = 0
         self.best_auc = 0.
+        self.best_all_auc = None
 
     def on_epoch_end(self, epoch, logs={}):
         if isinstance(self.test_data, tuple):
@@ -76,20 +78,50 @@ class DMAucModelCheckpoint(Callback):
                 weights = np.concatenate(wei_list)
             else:
                 weights = None
-        if len(np.unique(y_true)) == 1:
-            auc = 0.
+        # Calculate AUC score.
+        try:
+            auc = roc_auc_score(y_true, y_pred, average=None, 
+                                sample_weight=weights)
+        except ValueError:
+            auc = .0
+        # Calculate AUC for pos and neg classes on non-background cases.
+        if y_pred.shape[1] == 3:
+            non_bkg_idx = np.where(y_true[:,0]==0)[0]
+            sample_weight = None if weights is None else weights[non_bkg_idx]
+            try:
+                non_bkg_auc_pos = roc_auc_score(
+                    y_true[non_bkg_idx, 1], y_pred[non_bkg_idx, 1], 
+                    sample_weight=sample_weight)
+            except ValueError:
+                non_bkg_auc_pos = .0
+            try:
+                non_bkg_auc_neg = roc_auc_score(
+                    y_true[non_bkg_idx, 2], y_pred[non_bkg_idx, 2], 
+                    sample_weight=sample_weight)
+            except ValueError:
+                non_bkg_auc_neg = .0
+            # import pdb; pdb.set_trace()
+        if isinstance(auc, float):
+            print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+        elif len(auc) == 3:
+            print " - Epoch:%d, AUROC: bkg - %.4f, pos - %.4f, neg - %.4f" \
+                    % (epoch + 1, auc[0], auc[1], auc[2])
+            print " - non-bkg pos AUROC: %.4f, neg AUROC: %.4f" \
+                    % (non_bkg_auc_pos, non_bkg_auc_neg)
         else:
-            auc = roc_auc_score(y_true, y_pred, sample_weight=weights)
-        print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+            raise Exception("Unknown auc format: " + str(auc))
         sys.stdout.flush()
-        if auc > self.best_auc:
+        epoch_auc = non_bkg_auc_pos if y_pred.shape[1] == 3 else auc
+        if epoch_auc > self.best_auc:
             self.best_epoch = epoch + 1
-            self.best_auc = auc
+            self.best_auc = epoch_auc
+            self.best_all_auc = auc
             if self.filepath != "NOSAVE":
                 self.model.save(self.filepath)
 
     def on_train_end(self, logs={}):
         print "\n>>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
             (self.best_auc, self.best_epoch, self.filepath)
+        print ">>> AUROC for all cls:", str(self.best_all_auc), "<<<"
         sys.stdout.flush()
 

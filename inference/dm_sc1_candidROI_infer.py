@@ -1,5 +1,6 @@
 import argparse, os
 import numpy as np
+from sklearn.model_selection import train_test_split
 from keras.models import load_model
 from meta import DMMetaManager
 from dm_image import DMImageDataGenerator
@@ -19,8 +20,8 @@ def run(img_folder, img_height=1024, img_scale=4095,
         roi_state=None, roi_bs=32,
         do_featurewise_norm=True, featurewise_mean=884.7, featurewise_std=745.3, 
         img_tsv='./metadata/images_crosswalk_prediction.tsv', exam_tsv=None,
-        dl_state=None, dl_bs=32, nb_top_avg=1, validation_mode=False,
-        img_voting=False,
+        dl_state=None, dl_bs=32, nb_top_avg=1, validation_mode=False, 
+        val_size=None, img_voting=False,
         out_pred='./output/predictions.tsv'):
     '''Run SC1 inference using the candidate ROI approach
     Notes: 
@@ -37,10 +38,21 @@ def run(img_folder, img_height=1024, img_scale=4095,
     meta_man = DMMetaManager(
         img_tsv=img_tsv, exam_tsv=exam_tsv, img_folder=img_folder, 
         img_extension='dcm')
-    if validation_mode:
-        exam_list = meta_man.get_flatten_exam_list(flatten_img_list=True)
+    if val_size is not None:  # Use a subset for validation.
+        subj_list, subj_labs = meta_man.get_subj_labs()
+        _, subj_test = train_test_split(
+            subj_list, test_size=val_size, random_state=random_seed, 
+            stratify=subj_labs)
     else:
-        exam_list = meta_man.get_last_exam_list(flatten_img_list=True)
+        subj_test = None
+
+    if validation_mode:
+        exam_list = meta_man.get_flatten_exam_list(subj_list=subj_test, 
+                                                   flatten_img_list=True)
+    else:
+        exam_list = meta_man.get_last_exam_list(subj_list=subj_test, 
+                                                flatten_img_list=True)
+
     if do_featurewise_norm:
         img_gen = DMImageDataGenerator(featurewise_center=True, 
                                        featurewise_std_normalization=True)
@@ -50,7 +62,7 @@ def run(img_folder, img_height=1024, img_scale=4095,
         img_gen = DMImageDataGenerator(samplewise_center=True, 
                                        samplewise_std_normalization=True)
     if validation_mode:
-        class_mode = 'binary'
+        class_mode = 'categorical'
     else:
         class_mode = None
 
@@ -70,13 +82,7 @@ def run(img_folder, img_height=1024, img_scale=4095,
 
     # Load model.
     if dl_state is not None:
-        model = load_model(
-            dl_state, 
-            custom_objects={
-                'sensitivity': DMMetrics.sensitivity, 
-                'specificity': DMMetrics.specificity
-            }
-        )
+        model = load_model(dl_state)
     else:
         raise Exception('At least one model state must be specified.')
     if gpu_count > 1:
@@ -86,7 +92,7 @@ def run(img_folder, img_height=1024, img_scale=4095,
     def pred_img_list(img_list):
         roi_generator = img_gen.flow_from_candid_roi(
             img_list, target_height=img_height, target_scale=img_scale,
-            validation_mode=True, 
+            class_mode=class_mode, validation_mode=True, 
             img_per_batch=len(img_list), roi_per_img=roi_per_img, 
             roi_size=roi_size,
             low_int_threshold=low_int_threshold, blob_min_area=blob_min_area,
@@ -96,11 +102,12 @@ def run(img_folder, img_height=1024, img_scale=4095,
             seed=random_seed)
         roi_dat, roi_w = roi_generator.next()
         # import pdb; pdb.set_trace()
-        pred = model.predict(roi_dat, batch_size=dl_bs).ravel()
+        pred = model.predict(roi_dat, batch_size=dl_bs)
+        pred = pred[:, 1]  # cancer class predictions.
         if roi_clf is not None:
             # return np.average(pred, weights=roi_w)
             # import pdb; pdb.set_trace()
-            return pred[np.argmax(roi_w)]
+            return pred[np.argsort(roi_w)[-nb_top_avg:]].mean()
         elif img_voting:
             pred = pred.reshape((-1, roi_per_img))
             img_preds = [ np.sort(row)[-nb_top_avg:].mean() for row in pred ]
@@ -179,6 +186,8 @@ if __name__ == '__main__':
     parser.add_argument("--validation-mode", dest="validation_mode", action="store_true")
     parser.add_argument("--no-validation-mode", dest="validation_mode", action="store_false")
     parser.set_defaults(validation_mode=False)
+    parser.add_argument("--val-size", dest="val_size", type=float, default=None)
+    parser.add_argument("--no-val-size", dest="val_size", action="store_const", const=None)
     parser.add_argument("--img-voting", dest="img_voting", action="store_true")
     parser.add_argument("--no-img-voting", dest="img_voting", action="store_false")
     parser.set_defaults(img_voting=False)
@@ -207,6 +216,8 @@ if __name__ == '__main__':
         dl_bs=args.dl_bs,
         nb_top_avg=args.nb_top_avg,
         validation_mode=args.validation_mode,
+        val_size=(args.val_size if args.val_size is None or args.val_size < 1. 
+                  else int(args.val_size)),
         img_voting=args.img_voting,
         out_pred=args.out_pred
     )
