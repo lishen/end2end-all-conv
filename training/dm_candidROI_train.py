@@ -19,6 +19,23 @@ import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
+def subset_img_labs(img_list, lab_list, neg_vs_pos_ratio, seed=12345):
+    rng = np.random.RandomState(seed)
+    img_list = np.array(img_list)
+    lab_list = np.array(lab_list)
+    pos_idx = np.where(lab_list==1)[0]
+    neg_idx = np.where(lab_list==0)[0]
+    nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+    if nb_neg_desired < len(neg_idx):
+        sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+        all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+        img_list = img_list[all_idx].tolist()
+        lab_list = lab_list[all_idx].tolist()
+        return img_list, lab_list
+    else:
+        return img_list.tolist(), lab_list.tolist()
+
+
 def run(img_folder, img_extension='dcm', 
         img_height=1024, img_scale=4095, 
         do_featurewise_norm=True, norm_fit_size=10,
@@ -29,7 +46,8 @@ def run(img_folder, img_extension='dcm',
         more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
         amp_factor=1., return_sample_weight=True,
         patches_per_epoch=12800, nb_epoch=20, 
-        all_neg_skip=0., pos_cls_weight=1.0, neg_cls_weight=1.0,
+        train_neg_vs_pos_ratio=None, all_neg_skip=0., 
+        pos_cls_weight=1.0, neg_cls_weight=1.0,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
@@ -73,22 +91,14 @@ def run(img_folder, img_extension='dcm',
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_test, lab_test = meta_man.get_flatten_img_list(subj_test)
 
-    # Sample validation set to desired ratio.
+    # Sample data sets to desired ratio.
+    if train_neg_vs_pos_ratio is not None:
+        all_neg_skip = .0  # turn off batch-level sampling.
+        img_train, lab_train = subset_img_labs(
+            img_train, lab_train, train_neg_vs_pos_ratio, random_seed)
     if val_neg_vs_pos_ratio is not None:
-        rng = np.random.RandomState(random_seed)
-        img_test = np.array(img_test)
-        lab_test = np.array(lab_test)
-        pos_idx = np.where(lab_test==1)[0]
-        neg_idx = np.where(lab_test==0)[0]
-        nb_neg_desired = int(len(pos_idx)*val_neg_vs_pos_ratio)
-        if nb_neg_desired > len(neg_idx):
-            replace = True
-        else:
-            replace = False
-        sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=replace)
-        all_idx = np.concatenate([pos_idx, sampled_neg_idx])
-        img_test = img_test[all_idx].tolist()
-        lab_test = lab_test[all_idx].tolist()
+        img_test, lab_test = subset_img_labs(
+            img_test, lab_test, val_neg_vs_pos_ratio, random_seed)
 
     # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator(
@@ -317,6 +327,8 @@ if __name__ == '__main__':
     parser.set_defaults(return_sample_weight=True)
     parser.add_argument("--patches-per-epoch", "-ppe", dest="patches_per_epoch", type=int, default=12800)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
+    parser.add_argument("--train-nvp-ratio", dest="train_neg_vs_pos_ratio", type=float, default=None)
+    parser.add_argument("--no-train-nvp-ratio", dest="train_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
     parser.add_argument("--pos-class-weight", "-pcw", dest="pos_cls_weight", type=float, default=1.0)
     parser.add_argument("--neg-class-weight", "-ncw", dest="neg_cls_weight", type=float, default=1.0)
@@ -332,8 +344,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
-    parser.add_argument("--val-nvp-ratio", dest="val_neg_vs_pos_ratio", type=float)
-    parser.set_defaults(val_neg_vs_pos_ratio=None)
+    parser.add_argument("--val-nvp-ratio", dest="val_neg_vs_pos_ratio", type=float, default=None)
     parser.add_argument("--no-val-nvp-ratio", dest="val_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=3)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
@@ -377,6 +388,7 @@ if __name__ == '__main__':
         return_sample_weight=args.return_sample_weight,
         patches_per_epoch=args.patches_per_epoch, 
         nb_epoch=args.nb_epoch, 
+        train_neg_vs_pos_ratio=args.train_neg_vs_pos_ratio,
         all_neg_skip=args.all_neg_skip,
         pos_cls_weight=args.pos_cls_weight,
         neg_cls_weight=args.neg_cls_weight,
