@@ -252,8 +252,14 @@ def run(img_folder, dl_state, img_extension='dcm',
 
     # Generate image patches and extract their DL representations.
     print "Load DL representation model"; sys.stdout.flush()
-    dlrepr_model = DLRepr(dl_state, layer_name=layer_name, 
-                          layer_index=layer_index)
+    dlrepr_model = DLRepr(
+        dl_state,
+        custom_objects={
+                'sensitivity': dmm.sensitivity, 
+                'specificity': dmm.specificity
+        },
+        layer_name=layer_name, 
+        layer_index=layer_index)
     last_output_size = dlrepr_model.get_output_shape()[-1][-1]
     if last_output_size != 3 and last_output_size != 1:
         raise Exception("The last output must be prob outputs (size=3 or 1)")
