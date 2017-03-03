@@ -36,6 +36,35 @@ def subset_img_labs(img_list, lab_list, neg_vs_pos_ratio, seed=12345):
         return img_list.tolist(), lab_list.tolist()
 
 
+def load_dat_ram(generator, nb_samples):
+    samples_seen = 0
+    X_list = []
+    y_list = []
+    w_list = []
+    while samples_seen < nb_samples:
+        blob_ = generator.next()
+        try:
+            X,y,w = blob_
+            w_list.append(w)
+        except ValueError:
+            X,y = blob_
+        X_list.append(X)
+        y_list.append(y)
+        samples_seen += len(y)
+    try:
+        data_set = (np.concatenate(X_list), 
+                    np.concatenate(y_list),
+                    np.concatenate(w_list))
+    except ValueError:
+        data_set = (np.concatenate(X_list), 
+                    np.concatenate(y_list))
+
+    if len(data_set[0]) != nb_samples:
+        raise Exception('Load data into RAM error')
+
+    return data_set
+
+
 def run(img_folder, img_extension='dcm', 
         img_height=1024, img_scale=4095, 
         do_featurewise_norm=True, norm_fit_size=10,
@@ -53,7 +82,8 @@ def run(img_folder, img_extension='dcm',
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, val_neg_vs_pos_ratio=None, lr_patience=3, es_patience=10, 
-        resume_from=None, net='resnet50', load_val_ram=False,
+        resume_from=None, net='resnet50', load_val_ram=False, 
+        load_train_ram=False,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_candidROI_best_model.h5',
@@ -71,7 +101,7 @@ def run(img_folder, img_extension='dcm',
     # "failed to enqueue async memcpy from host to device: CUDA_ERROR_NOT_INITIALIZED"
     # To avoid the error, only this combination worked: 
     # nb_worker=1 and pickle_safe=False.
-    # nb_worker = int(os.getenv('NUM_CPU_CORES', 4))
+    nb_worker = int(os.getenv('NUM_CPU_CORES', 4))
     gpu_count = int(os.getenv('NUM_GPU_DEVICES', 1))
     
     # Setup training and validation data.
@@ -149,11 +179,28 @@ def run(img_folder, img_extension='dcm',
         roi_clf = None
         graph = None
 
+    # Set some DL training related parameters.
+    if one_patch_mode:
+        class_mode = 'binary'
+        loss = 'binary_crossentropy'
+        metrics = [DMMetrics.sensitivity, DMMetrics.specificity]
+        class_weight = { 0:1.0, 1:pos_cls_weight }
+    else:
+        class_mode = 'categorical'
+        loss = 'categorical_crossentropy'
+        metrics = ['accuracy', 'precision', 'recall']
+        class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
+    if load_train_ram:
+        validation_mode = True
+    else:
+        validation_mode = False
+
+    # Create train and val generators.
     print ">>> Train image generator <<<"; sys.stdout.flush()
     train_generator = imgen_trainval.flow_from_candid_roi(
         img_train, lab_train, 
         target_height=img_height, target_scale=img_scale,
-        class_mode='categorical', validation_mode=False, 
+        class_mode=class_mode, validation_mode=validation_mode, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
         roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
@@ -168,7 +215,7 @@ def run(img_folder, img_extension='dcm',
     val_generator = imgen_trainval.flow_from_candid_roi(
         img_test, lab_test, 
         target_height=img_height, target_scale=img_scale,
-        class_mode='categorical', validation_mode=True, 
+        class_mode=class_mode, validation_mode=True, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
         roi_size=roi_size, one_patch_mode=one_patch_mode,
         low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
@@ -179,43 +226,36 @@ def run(img_folder, img_extension='dcm',
         pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
         seed=random_seed)
 
-    # Load validation set into RAM.
+    # Load train and validation set into RAM.
     if one_patch_mode:
+        nb_train_samples = len(img_train)
         nb_val_samples = len(img_test)
     else:
+        nb_train_samples = len(img_train)*roi_per_img
         nb_val_samples = len(img_test)*roi_per_img
     if load_val_ram:
         print "Loading validation data into RAM.",
         sys.stdout.flush()
-        samples_seen = 0
-        X_list = []
-        y_list = []
-        w_list = []
-        while samples_seen < nb_val_samples:
-            try:
-                X,y,w = val_generator.next()
-                w_list.append(w)
-            except ValueError:
-                X,y = val_generator.next()
-            X_list.append(X)
-            y_list.append(y)
-            samples_seen += len(y)
-        try:
-            validation_set = (np.concatenate(X_list), 
-                              np.concatenate(y_list),
-                              np.concatenate(w_list))
-        except ValueError:
-            validation_set = (np.concatenate(X_list), 
-                              np.concatenate(y_list))
-
-        if len(validation_set[0]) != nb_val_samples:
-            raise Exception
-        del [X_list, y_list, w_list]
+        validation_set = load_dat_ram(val_generator, nb_val_samples)
         print "Done."; sys.stdout.flush()
+    if load_train_ram:
+        print "Loading train data into RAM.",
+        sys.stdout.flush()
+        train_set = load_dat_ram(train_generator, nb_train_samples)
+        print "Done."; sys.stdout.flush()
+        train_generator = imgen_trainval.flow(
+            train_set[0], train_set[1], batch_size=clf_bs, shuffle=True, 
+            seed=random_seed)
 
     # Load or create model.
     if resume_from is not None:
-        model = load_model(resume_from)
+        model = load_model(
+            resume_from,
+            custom_objects={
+                'sensitivity': DMMetrics.sensitivity, 
+                'specificity': DMMetrics.specificity
+            }
+        )
     else:
         builder = ResNetBuilder
         if net == 'resnet18':
@@ -249,8 +289,7 @@ def run(img_folder, img_extension='dcm',
 
     # Model training.
     sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
-    model.compile(optimizer=sgd, loss='categorical_crossentropy', 
-                  metrics=['accuracy', 'precision', 'recall'])
+    model.compile(optimizer=sgd, loss=loss, metrics=metrics)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
@@ -265,29 +304,38 @@ def run(img_folder, img_extension='dcm',
         train_generator, 
         samples_per_epoch=patches_per_epoch, 
         nb_epoch=nb_epoch,
-        class_weight={ 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight },
+        class_weight=class_weight,
         validation_data=validation_set if load_val_ram else val_generator, 
         nb_val_samples=nb_val_samples, 
         callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
-        nb_worker=1, 
-        pickle_safe=False,
+        nb_worker=nb_worker if load_train_ram else 1, 
+        pickle_safe=True if load_train_ram else False,
         verbose=2)
 
+    if final_model != "NOSAVE":
+        print "Saving final model to:", final_model; sys.stdout.flush()
+        model.save(final_model)
+    
     # Training report.
     min_loss_locs, = np.where(hist.history['val_loss'] == min(hist.history['val_loss']))
     best_val_loss = hist.history['val_loss'][min_loss_locs[0]]
-    # best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
-    # best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
-    best_val_accuracy = hist.history['val_acc'][min_loss_locs[0]]
+    if one_patch_mode:
+        best_val_sensitivity = hist.history['val_sensitivity'][min_loss_locs[0]]
+        best_val_specificity = hist.history['val_specificity'][min_loss_locs[0]]
+    else:
+        best_val_precision = hist.history['val_precision'][min_loss_locs[0]]
+        best_val_recall = hist.history['val_recall'][min_loss_locs[0]]
+        best_val_accuracy = hist.history['val_acc'][min_loss_locs[0]]
     print "\n==== Training summary ===="
     print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
     print "Best val loss:", best_val_loss
-    # print "Best val sensitivity:", best_val_sensitivity
-    # print "Best val specificity:", best_val_specificity
-    print "Best val accuracy:", best_val_accuracy
-    
-    if final_model != "NOSAVE":
-        model.save(final_model)
+    if one_patch_mode:
+        print "Best val sensitivity:", best_val_sensitivity
+        print "Best val specificity:", best_val_specificity
+    else:
+        print "Best val precision:", best_val_precision
+        print "Best val recall:", best_val_recall
+        print "Best val accuracy:", best_val_accuracy
 
     return hist
 
@@ -354,6 +402,9 @@ if __name__ == '__main__':
     parser.add_argument("--loadval-ram", dest="load_val_ram", action="store_true")
     parser.add_argument("--no-loadval-ram", dest="load_val_ram", action="store_false")
     parser.set_defaults(load_val_ram=False)
+    parser.add_argument("--loadtrain-ram", dest="load_train_ram", action="store_true")
+    parser.add_argument("--no-loadtrain-ram", dest="load_train_ram", action="store_false")
+    parser.set_defaults(load_train_ram=False)
     parser.add_argument("--exam-tsv", "-et", dest="exam_tsv", type=str, 
                         default="./metadata/exams_metadata.tsv")
     parser.add_argument("--no-exam-tsv", dest="exam_tsv", action="store_const", const=None)
@@ -410,6 +461,7 @@ if __name__ == '__main__':
         resume_from=args.resume_from,
         net=args.net,
         load_val_ram=args.load_val_ram,
+        load_train_ram=args.load_train_ram,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        

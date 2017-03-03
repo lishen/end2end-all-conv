@@ -794,7 +794,8 @@ class DMCandidROIIterator(Iterator):
                                        batch_w>=self.cutpoint)] = 2
             # Adjust positive and negative patch weights.
             batch_w[batch_y==1] *= self.pos_cls_weight
-            batch_w[batch_y==2] *= self.neg_cls_weight
+            if not self.one_patch_mode:
+                batch_w[batch_y==2] *= self.neg_cls_weight
 
         # build batch of labels
         if self.classes is None or self.class_mode is None:
