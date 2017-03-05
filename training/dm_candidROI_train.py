@@ -72,7 +72,7 @@ def run(img_folder, img_extension='dcm',
         one_patch_mode=False,
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
-        more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
+        data_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
         amp_factor=1., return_sample_weight=True, auto_batch_balance=True,
         patches_per_epoch=12800, nb_epoch=20, 
         train_neg_vs_pos_ratio=None, all_neg_skip=0., 
@@ -80,7 +80,8 @@ def run(img_folder, img_extension='dcm',
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
-        val_size=.2, val_neg_vs_pos_ratio=None, lr_patience=3, es_patience=10, 
+        test_size=.2, val_size=.0, val_neg_vs_pos_ratio=None, 
+        lr_patience=3, es_patience=10, 
         resume_from=None, net='resnet50', load_val_ram=False, 
         load_train_ram=False, no_pos_skip=0., balance_classes=0.,
         exam_tsv='./metadata/exams_metadata.tsv',
@@ -111,14 +112,17 @@ def run(img_folder, img_extension='dcm',
                              img_extension=img_extension)
     # Split data based on subjects.
     subj_list, subj_labs = meta_man.get_subj_labs()
-    if val_size < 0:  # do not split data.
-        subj_train = subj_test = subj_list
-    else:
-        subj_train, subj_test = train_test_split(
-            subj_list, test_size=val_size, random_state=random_seed, 
-            stratify=subj_labs)
+    subj_train, subj_test, slab_train, slab_test = train_test_split(
+        subj_list, subj_labs, test_size=test_size, random_state=random_seed, 
+        stratify=subj_labs)
+    if val_size > 0:  # train/val split.
+        subj_train, subj_val = train_test_split(
+            subj_train, test_size=val_size, random_state=random_seed, 
+            stratify=slab_train)
+    else:  # use test as val.
+        subj_val = subj_test
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
-    img_test, lab_test = meta_man.get_flatten_img_list(subj_test)
+    img_val, lab_val = meta_man.get_flatten_img_list(subj_val)
 
     # Sample data sets to desired ratio.
     if train_neg_vs_pos_ratio is not None:
@@ -126,18 +130,19 @@ def run(img_folder, img_extension='dcm',
         img_train, lab_train = subset_img_labs(
             img_train, lab_train, train_neg_vs_pos_ratio, random_seed)
     if val_neg_vs_pos_ratio is not None:
-        img_test, lab_test = subset_img_labs(
-            img_test, lab_test, val_neg_vs_pos_ratio, random_seed)
+        img_val, lab_val = subset_img_labs(
+            img_val, lab_val, val_neg_vs_pos_ratio, random_seed)
 
     # Create image generators for train, fit and val.
-    imgen_trainval = DMImageDataGenerator(
-        horizontal_flip=True, 
-        vertical_flip=True)
-    if more_augmentation:
-        imgen_trainval.rotation_range = 90
-        imgen_trainval.width_shift_range = .25
-        imgen_trainval.height_shift_range = .25
-        imgen_trainval.zoom_range = [.8, 1.2]
+    imgen_trainval = DMImageDataGenerator()
+    if data_augmentation:
+        horizontal_flip=True 
+        vertical_flip=True
+        imgen_trainval.rotation_range = 45.
+        imgen_trainval.shear_range = np.pi/8.
+        # imgen_trainval.width_shift_range = .05
+        # imgen_trainval.height_shift_range = .05
+        # imgen_trainval.zoom_range = [.95, 1.05]
 
     if do_featurewise_norm:
         imgen_trainval.featurewise_center = True
@@ -213,7 +218,7 @@ def run(img_folder, img_extension='dcm',
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
     val_generator = imgen_trainval.flow_from_candid_roi(
-        img_test, lab_test, 
+        img_val, lab_val, 
         target_height=img_height, target_scale=img_scale,
         class_mode=class_mode, validation_mode=True, 
         img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
@@ -229,10 +234,10 @@ def run(img_folder, img_extension='dcm',
     # Load train and validation set into RAM.
     if one_patch_mode:
         nb_train_samples = len(img_train)
-        nb_val_samples = len(img_test)
+        nb_val_samples = len(img_val)
     else:
         nb_train_samples = len(img_train)*roi_per_img
-        nb_val_samples = len(img_test)*roi_per_img
+        nb_val_samples = len(img_val)*roi_per_img
     if load_val_ram:
         print "Loading validation data into RAM.",
         sys.stdout.flush()
@@ -301,7 +306,7 @@ def run(img_folder, img_extension='dcm',
     # Model training.
     sgd = SGD(lr=init_lr, momentum=0.9, decay=0.0, nesterov=True)
     model.compile(optimizer=sgd, loss=loss, metrics=metrics)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, 
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, 
                                   patience=lr_patience, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
                                    verbose=1)
@@ -318,9 +323,9 @@ def run(img_folder, img_extension='dcm',
         validation_data=validation_set if load_val_ram else val_generator, 
         nb_val_samples=nb_val_samples, 
         callbacks=[reduce_lr, early_stopping, auc_checkpointer],
-        nb_worker=1, pickle_safe=False,
-        # nb_worker=nb_worker if load_train_ram else 1,
-        # pickle_safe=True if load_train_ram else False,
+        # nb_worker=1, pickle_safe=False,
+        nb_worker=nb_worker if load_train_ram else 1,
+        pickle_safe=True if load_train_ram else False,
         verbose=2)
 
     if final_model != "NOSAVE":
@@ -373,9 +378,9 @@ if __name__ == '__main__':
     parser.add_argument("--blob-min-int", dest="blob_min_int", type=float, default=.5)
     parser.add_argument("--blob-max-int", dest="blob_max_int", type=float, default=.85)
     parser.add_argument("--blob-th-step", dest="blob_th_step", type=int, default=10)
-    parser.add_argument("--more-augmentation", dest="more_augmentation", action="store_true")
-    parser.add_argument("--no-more-augmentation", dest="more_augmentation", action="store_false")
-    parser.set_defaults(more_augmentation=False)
+    parser.add_argument("--data-augmentation", dest="data_augmentation", action="store_true")
+    parser.add_argument("--no-data-augmentation", dest="data_augmentation", action="store_false")
+    parser.set_defaults(data_augmentation=False)
     parser.add_argument("--roi-state", dest="roi_state", type=str, default=None)
     parser.add_argument("--no-roi-state", dest="roi_state", action="store_const", const=None)
     parser.add_argument("--clf-bs", dest="clf_bs", type=int, default=32)
@@ -405,7 +410,8 @@ if __name__ == '__main__':
     parser.add_argument("--inp-dropout", "-id", dest="inp_dropout", type=float, default=.0)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
-    parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.2)
+    parser.add_argument("--test-size", "-ts", dest="test_size", type=float, default=.2)
+    parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.0)
     parser.add_argument("--val-nvp-ratio", dest="val_neg_vs_pos_ratio", type=float, default=None)
     parser.add_argument("--no-val-nvp-ratio", dest="val_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=3)
@@ -445,7 +451,7 @@ if __name__ == '__main__':
         blob_min_int=args.blob_min_int,
         blob_max_int=args.blob_max_int,
         blob_th_step=args.blob_th_step,
-        more_augmentation=args.more_augmentation,
+        data_augmentation=args.data_augmentation,
         roi_state=args.roi_state,
         clf_bs=args.clf_bs,
         cutpoint=args.cutpoint,
@@ -468,6 +474,7 @@ if __name__ == '__main__':
         hidden_dropout=args.hidden_dropout,
         init_lr=args.init_lr,
         val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
+        test_size=args.test_size if args.test_size < 1 else int(args.test_size), 
         val_neg_vs_pos_ratio=args.val_neg_vs_pos_ratio,
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
