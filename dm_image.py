@@ -35,14 +35,14 @@ def index_balancer(index_array, classes, ratio, rng):
     '''
     current_batch_size = len(index_array)
     pos_weight = len(classes) / (np.sum(classes==1) + 1e-7)
-    neg_weight = len(classes) / (np.sum(classes==0) + 1e-7)
+    neg_weight = len(classes) / (np.sum(classes!=1) + 1e-7)
     neg_weight *= ratio
     probs = np.zeros(current_batch_size)
     probs[classes==1] = pos_weight
-    probs[classes==0] = neg_weight
+    probs[classes!=1] = neg_weight
     probs /= probs.sum()
     index_array = rng.choice(index_array, current_batch_size, p=probs)
-    index_array.sort()  # can avoid repeated img reading.
+    index_array.sort()  # can avoid repeated img reading from disks.
     return index_array
 
 
@@ -861,7 +861,7 @@ class DMNumpyArrayIterator(Iterator):
 
     def __init__(self, x, y, image_data_generator,
                  batch_size=32, auto_batch_balance=True, no_pos_skip=0.,
-                 shuffle=False, seed=None,
+                 balance_classes=0., shuffle=False, seed=None,
                  dim_ordering='default',
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         if y is not None and len(x) != len(y):
@@ -891,6 +891,7 @@ class DMNumpyArrayIterator(Iterator):
         self.image_data_generator = image_data_generator
         self.auto_batch_balance = auto_batch_balance
         self.no_pos_skip = no_pos_skip
+        self.balance_classes = balance_classes
         self.dim_ordering = dim_ordering
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
@@ -921,6 +922,14 @@ class DMNumpyArrayIterator(Iterator):
                         RandomState(int(self.seed) + self.total_batches_seen)
             else:
                 batch_y = None
+        
+        # Balance classes to over-sample pos class.
+        if self.balance_classes and self.y is not None:
+            ratio = float(self.balance_classes)  # neg vs. pos.
+            index_array = index_balancer(index_array, sparse_y, ratio, rng)
+            batch_y = self.y[index_array]
+            sparse_y = to_sparse(batch_y)
+            
         # The transformation of images is not under thread lock
         # so it can be done in parallel
         batch_x = np.zeros(tuple([current_batch_size] + list(self.x.shape)[1:]), dtype=K.floatx())
@@ -1065,7 +1074,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
 
     def flow(self, X, y=None, batch_size=32, 
-             auto_batch_balance=True, no_pos_skip=0.,
+             auto_batch_balance=True, no_pos_skip=0., balance_classes=0.,
              shuffle=True, seed=None,
              save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMNumpyArrayIterator(
@@ -1073,6 +1082,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             batch_size=batch_size,
             auto_batch_balance=auto_batch_balance,
             no_pos_skip = no_pos_skip,
+            balance_classes=balance_classes,
             shuffle=shuffle,
             seed=seed,
             dim_ordering=self.dim_ordering,

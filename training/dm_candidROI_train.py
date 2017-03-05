@@ -82,7 +82,7 @@ def run(img_folder, img_extension='dcm',
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, val_neg_vs_pos_ratio=None, lr_patience=3, es_patience=10, 
         resume_from=None, net='resnet50', load_val_ram=False, 
-        load_train_ram=False, no_pos_skip=0.,
+        load_train_ram=False, no_pos_skip=0., balance_classes=0.,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_candidROI_best_model.h5',
@@ -256,7 +256,7 @@ def run(img_folder, img_extension='dcm',
         train_generator = imgen_trainval.flow(
             train_set[0], train_set[1], batch_size=clf_bs, 
             auto_batch_balance=auto_batch_balance, no_pos_skip=no_pos_skip,
-            shuffle=True, seed=random_seed)
+            balance_classes=balance_classes, shuffle=True, seed=random_seed)
 
     # Load or create model.
     if resume_from is not None:
@@ -393,6 +393,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-train-nvp-ratio", dest="train_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
     parser.add_argument("--nopos-skip", dest="no_pos_skip", type=float, default=0.)
+    parser.add_argument("--balance-classes", dest="balance_classes", type=float, default=0.)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=32)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=5)
     parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
@@ -475,6 +476,7 @@ if __name__ == '__main__':
         load_val_ram=args.load_val_ram,
         load_train_ram=args.load_train_ram,
         no_pos_skip=args.no_pos_skip,
+        balance_classes=args.balance_classes,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
