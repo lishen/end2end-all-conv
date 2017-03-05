@@ -1,12 +1,33 @@
 import numpy as np
 from numpy.random import RandomState
 from os import path
-from keras.preprocessing.image import ImageDataGenerator, Iterator
-from keras.utils.np_utils import to_categorical
+from keras.preprocessing.image import (
+    ImageDataGenerator, 
+    Iterator, 
+    # NumpyArrayIterator
+)
+from keras.utils.np_utils import (
+    to_categorical, 
+    categorical_probas_to_classes
+)
 import keras.backend as K
 import cv2
 import dicom
 from dm_preprocess import DMImagePreprocessor as prep
+
+
+def to_sparse(y):
+    '''Convert labels to sparse format if they are onehot encoded
+    '''
+    if y.ndim == 1:
+        sparse_y = y
+    elif y.ndim == 2:
+        sparse_y = categorical_probas_to_classes(y)
+    else:
+        raise ValueError('Labels should use either sparse '
+                         'or onehot encoding format. Found '
+                         'shape to be: %s' % (y.shape))
+    return sparse_y
 
 
 def index_balancer(index_array, classes, ratio, rng):
@@ -540,8 +561,9 @@ class DMCandidROIIterator(Iterator):
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
                  amp_factor=1., return_sample_weight=True, 
-                 pos_cls_weight=1.0, neg_cls_weight=1.0,
+                 auto_batch_balance=True,
                  all_neg_skip=0., shuffle=True, seed=None,
+                 return_raw_img=False,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
         '''DM candidate roi iterator
@@ -566,8 +588,7 @@ class DMCandidROIIterator(Iterator):
             raise Exception('amp_factor must not be less than 1.0')
         self.amp_factor = amp_factor
         self.return_sample_weight = return_sample_weight
-        self.pos_cls_weight = pos_cls_weight
-        self.neg_cls_weight = neg_cls_weight
+        self.auto_batch_balance = auto_batch_balance
         self.low_int_threshold = low_int_threshold
         # Always gray-scale.
         if self.dim_ordering == 'tf':
@@ -585,6 +606,7 @@ class DMCandidROIIterator(Iterator):
             shuffle = False
         self.all_neg_skip = all_neg_skip
         self.seed = seed
+        self.return_raw_img = return_raw_img
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
@@ -705,6 +727,8 @@ class DMCandidROIIterator(Iterator):
             batch_x[batch_idx:batch_idx+nb_img_roi] = xs
             batch_idx += nb_img_roi
 
+        if self.return_raw_img:
+            batch_x_r = batch_x.copy()
         # transform and standardize.
         for i, x in enumerate(batch_x):
             if not self.validation_mode:
@@ -727,24 +751,24 @@ class DMCandidROIIterator(Iterator):
                 # it seems only 8-bit images are supported.
                 cv2.imwrite(path.join(self.save_to_dir, fname), img)
         
-        # calculate sample weights using the ROI classifier.
+        # score patches using the ROI classifier.
         if self.roi_clf is None:
-            batch_w = np.ones((len(batch_x),))
+            batch_s = np.ones((len(batch_x),))
         elif self.tf_graph is not None:
             with self.tf_graph.as_default():
-                batch_w = self.roi_clf.predict(batch_x, 
+                batch_s = self.roi_clf.predict(batch_x, 
                                                batch_size=self.clf_bs)
         else:
-            batch_w = self.roi_clf.predict(batch_x, 
+            batch_s = self.roi_clf.predict(batch_x, 
                                            batch_size=self.clf_bs)
-        batch_w = batch_w.ravel()
+        batch_s = batch_s.ravel()
 
-        # use ROI prob score to mask patches.
+        # use ROI prob scores to mask patches.
         if margin_creation:
-            batch_mask = np.ones_like(batch_w, dtype='bool')
+            batch_mask = np.ones_like(batch_s, dtype='bool')
             batch_idx = 0
             for cls_ in batch_cls:
-                img_w = batch_w[batch_idx:batch_idx+nb_img_roi]
+                img_w = batch_s[batch_idx:batch_idx+nb_img_roi]
                 w_sorted_idx = np.argsort(img_w)
                 img_m = np.ones_like(img_w, dtype='bool')  # per img mask.
                 # filter out low score patches.
@@ -760,19 +784,24 @@ class DMCandidROIIterator(Iterator):
                 img_m[w_sorted_idx[:nb_bkg_patches]] = True
                 batch_mask[batch_idx:batch_idx+nb_img_roi] = img_m
                 batch_idx += nb_img_roi
-            # batch_mask = batch_mask.astype('bool')
             batch_x = batch_x[batch_mask]
-            batch_w = batch_w[batch_mask]
+            batch_s = batch_s[batch_mask]
+            if self.return_raw_img:
+                batch_x_r = batch_x_r[batch_mask]
         elif self.one_patch_mode:
-            wei_mat = batch_w.reshape((-1, self.roi_per_img))
+            wei_mat = batch_s.reshape((-1, self.roi_per_img))
             max_wei_idx = np.argmax(wei_mat, axis=1)
             max_wei_idx += np.arange(wei_mat.shape[0])*self.roi_per_img
-            batch_mask = np.zeros_like(batch_w, dtype='bool')
+            batch_mask = np.zeros_like(batch_s, dtype='bool')
             batch_mask[max_wei_idx] = True
             batch_x = batch_x[batch_mask]
-            batch_w = batch_w[batch_mask]
+            batch_s = batch_s[batch_mask]
+            if self.return_raw_img:
+                batch_x_r = batch_x_r[batch_mask]
+        else:
+            pass
 
-        # adjust sample weights for positive and negative classes.
+        # Create background, positive and negative classes.
         if self.classes is not None:
             img_y = self.classes[index_array]
             if self.one_patch_mode:
@@ -781,26 +810,31 @@ class DMCandidROIIterator(Iterator):
                 batch_y = np.array([ [y]*self.roi_per_img 
                                      for y in img_y ]).ravel()
                 # Set low score patches to background.
-                batch_y[batch_w < self.cutpoint] = 0
+                batch_y[batch_s < self.cutpoint] = 0
                 # Add back the max scored patch (in case no one passes cutpoint).
                 for ii,y in enumerate(img_y):
                     if y == 1:
                         img_idx = ii*self.roi_per_img
-                        img_w = batch_w[img_idx:img_idx+self.roi_per_img]
+                        img_w = batch_s[img_idx:img_idx+self.roi_per_img]
                         max_w_idx = np.argmax(img_w)
                         batch_y[img_idx + max_w_idx] = 1
                 # Assign negative patch labels.
                 batch_y[np.logical_and(batch_y==0, 
-                                       batch_w>=self.cutpoint)] = 2
-            # Adjust positive and negative patch weights.
-            batch_w[batch_y==1] *= self.pos_cls_weight
-            if not self.one_patch_mode:
-                batch_w[batch_y==2] *= self.neg_cls_weight
+                                       batch_s>=self.cutpoint)] = 2
+            # In-batch balancing using sample weights.
+            batch_w = np.ones_like(batch_y, dtype='float32')
+            if self.auto_batch_balance:
+                for uy in np.unique(batch_y):
+                    batch_w[batch_y==uy] /= (batch_y==uy).mean()
 
         # build batch of labels
         if self.classes is None or self.class_mode is None:
             if self.return_sample_weight:
+                if self.return_raw_img:
+                    return batch_x_r, batch_w
                 return batch_x, batch_w
+            elif self.return_raw_img:
+                return batch_x_r
             else:
                 return batch_x
         else:
@@ -813,9 +847,105 @@ class DMCandidROIIterator(Iterator):
             else:  # class_mode == None
                 raise Exception  # this shall never happen.
         if self.return_sample_weight:
+            if self.return_raw_img:
+                return batch_x_r, batch_y, batch_w
+            # import pdb; pdb.set_trace()
             return batch_x, batch_y, batch_w
+        elif self.return_raw_img:
+            return batch_x_r, batch_y
         else:
             return batch_x, batch_y
+
+
+class DMNumpyArrayIterator(Iterator):
+
+    def __init__(self, x, y, image_data_generator,
+                 batch_size=32, auto_batch_balance=True, no_pos_skip=0.,
+                 shuffle=False, seed=None,
+                 dim_ordering='default',
+                 save_to_dir=None, save_prefix='', save_format='jpeg'):
+        if y is not None and len(x) != len(y):
+            raise ValueError('X (images tensor) and y (labels) '
+                             'should have the same length. '
+                             'Found: X.shape = %s, y.shape = %s' %
+                             (np.asarray(x).shape, np.asarray(y).shape))
+        if dim_ordering == 'default':
+            dim_ordering = K.image_dim_ordering()
+        self.x = np.asarray(x, dtype=K.floatx())
+        if self.x.ndim != 4:
+            raise ValueError('Input data in `DMNumpyArrayIterator` '
+                             'should have rank 4. You passed an array '
+                             'with shape', self.x.shape)
+        channels_axis = 3 if dim_ordering == 'tf' else 1
+        if self.x.shape[channels_axis] not in {1, 3, 4}:
+            raise ValueError('DMNumpyArrayIterator is set to use the '
+                             'dimension ordering convention "' + dim_ordering + '" '
+                             '(channels on axis ' + str(channels_axis) + '), i.e. expected '
+                             'either 1, 3 or 4 channels on axis ' + str(channels_axis) + '. '
+                             'However, it was passed an array with shape ' + str(self.x.shape) +
+                             ' (' + str(self.x.shape[channels_axis]) + ' channels).')
+        if y is not None:
+            self.y = np.asarray(y)
+        else:
+            self.y = None
+        self.image_data_generator = image_data_generator
+        self.auto_batch_balance = auto_batch_balance
+        self.no_pos_skip = no_pos_skip
+        self.dim_ordering = dim_ordering
+        self.save_to_dir = save_to_dir
+        self.save_prefix = save_prefix
+        self.save_format = save_format
+        self.seed = seed
+        super(DMNumpyArrayIterator, self).__init__(x.shape[0], batch_size, shuffle, seed)
+
+    def next(self):
+        # for python 2.x.
+        # Keeps under lock only the mechanism which advances
+        # the indexing of each batch
+        # see http://anandology.com/blog/using-iterators-and-generators/
+        with self.lock:
+            index_array, current_index, current_batch_size = next(self.index_generator)
+            # Obtain the random state for the current batch.
+            rng = RandomState() if self.seed is None else \
+                RandomState(int(self.seed) + self.total_batches_seen)
+            if self.y is not None:
+                batch_y = self.y[index_array]
+                sparse_y = to_sparse(batch_y)
+                # import pdb; pdb.set_trace()
+                while self.no_pos_skip > rng.uniform() and np.all(sparse_y != 1):
+                    index_array, current_index, current_batch_size = \
+                        next(self.index_generator)
+                    batch_y = self.y[index_array]
+                    sparse_y = to_sparse(batch_y)
+                    rng = RandomState() if self.seed is None else \
+                        RandomState(int(self.seed) + self.total_batches_seen)
+            else:
+                batch_y = None
+        # The transformation of images is not under thread lock
+        # so it can be done in parallel
+        batch_x = np.zeros(tuple([current_batch_size] + list(self.x.shape)[1:]), dtype=K.floatx())
+        for i, j in enumerate(index_array):
+            x = self.x[j]
+            x = self.image_data_generator.random_transform(x.astype(K.floatx()))
+            x = self.image_data_generator.standardize(x)
+            batch_x[i] = x
+        if self.save_to_dir:
+            for i in range(current_batch_size):
+                img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
+                fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
+                                                                  index=current_index + i,
+                                                                  hash=np.random.randint(1e4),
+                                                                  format=self.save_format)
+                img.save(os.path.join(self.save_to_dir, fname))
+        if self.y is None:
+            return batch_x
+        if self.auto_batch_balance:
+            batch_w = np.ones_like(sparse_y, dtype='float32')
+            for uy in np.unique(sparse_y):
+                batch_w[sparse_y==uy] /= (sparse_y==uy).mean()
+            # import pdb; pdb.set_trace()
+            return batch_x, batch_y, batch_w
+        return batch_x, batch_y
 
 
 class DMImageDataGenerator(ImageDataGenerator):
@@ -909,8 +1039,9 @@ class DMImageDataGenerator(ImageDataGenerator):
                  blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
                  tf_graph=None, roi_clf=None, clf_bs=32, cutpoint=.5,
                  amp_factor=1., return_sample_weight=True,
-                 pos_cls_weight=1., neg_cls_weight=1.,
+                 auto_batch_balance=True,
                  all_neg_skip=0., shuffle=True, seed=None,
+                 return_raw_img=False,
                  save_to_dir=None, save_prefix='', save_format='jpeg', 
                  verbose=True):
         return DMCandidROIIterator(
@@ -925,13 +1056,29 @@ class DMImageDataGenerator(ImageDataGenerator):
             blob_th_step=blob_th_step,
             tf_graph=tf_graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
             amp_factor=amp_factor, return_sample_weight=return_sample_weight,
-            pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
+            auto_batch_balance=auto_batch_balance,
             all_neg_skip=all_neg_skip, shuffle=shuffle, seed=seed, 
+            return_raw_img=return_raw_img,
             save_to_dir=save_to_dir, save_prefix=save_prefix, 
             save_format=save_format,
             verbose=verbose)
 
 
+    def flow(self, X, y=None, batch_size=32, 
+             auto_batch_balance=True, no_pos_skip=0.,
+             shuffle=True, seed=None,
+             save_to_dir=None, save_prefix='', save_format='jpeg'):
+        return DMNumpyArrayIterator(
+            X, y, self,
+            batch_size=batch_size,
+            auto_batch_balance=auto_batch_balance,
+            no_pos_skip = no_pos_skip,
+            shuffle=shuffle,
+            seed=seed,
+            dim_ordering=self.dim_ordering,
+            save_to_dir=save_to_dir,
+            save_prefix=save_prefix,
+            save_format=save_format)
 
 
 

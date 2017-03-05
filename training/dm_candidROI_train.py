@@ -9,7 +9,7 @@ from keras.optimizers import SGD
 from keras.models import load_model
 import tensorflow as tf
 from meta import DMMetaManager
-from dm_image import DMImageDataGenerator
+from dm_image import DMImageDataGenerator, to_sparse
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
 from dm_keras_ext import DMMetrics, DMAucModelCheckpoint
@@ -73,17 +73,16 @@ def run(img_folder, img_extension='dcm',
         low_int_threshold=.05, blob_min_area=3, 
         blob_min_int=.5, blob_max_int=.85, blob_th_step=10,
         more_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
-        amp_factor=1., return_sample_weight=True,
+        amp_factor=1., return_sample_weight=True, auto_batch_balance=True,
         patches_per_epoch=12800, nb_epoch=20, 
         train_neg_vs_pos_ratio=None, all_neg_skip=0., 
-        pos_cls_weight=1.0, neg_cls_weight=1.0,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
         val_size=.2, val_neg_vs_pos_ratio=None, lr_patience=3, es_patience=10, 
         resume_from=None, net='resnet50', load_val_ram=False, 
-        load_train_ram=False,
+        load_train_ram=False, no_pos_skip=0.,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_candidROI_best_model.h5',
@@ -184,16 +183,16 @@ def run(img_folder, img_extension='dcm',
         class_mode = 'binary'
         loss = 'binary_crossentropy'
         metrics = [DMMetrics.sensitivity, DMMetrics.specificity]
-        class_weight = { 0:1.0, 1:pos_cls_weight }
     else:
         class_mode = 'categorical'
         loss = 'categorical_crossentropy'
         metrics = ['accuracy', 'precision', 'recall']
-        class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
     if load_train_ram:
         validation_mode = True
+        return_raw_img = True
     else:
         validation_mode = False
+        return_raw_img = False
 
     # Create train and val generators.
     print ">>> Train image generator <<<"; sys.stdout.flush()
@@ -208,8 +207,9 @@ def run(img_folder, img_extension='dcm',
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
         amp_factor=amp_factor, return_sample_weight=return_sample_weight,
-        pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
-        all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed)
+        auto_batch_balance=auto_batch_balance,
+        all_neg_skip=all_neg_skip, shuffle=True, seed=random_seed,
+        return_raw_img=return_raw_img)
 
     print ">>> Validation image generator <<<"; sys.stdout.flush()
     val_generator = imgen_trainval.flow_from_candid_roi(
@@ -222,8 +222,8 @@ def run(img_folder, img_extension='dcm',
         blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
         blob_th_step=blob_th_step,
         tf_graph=graph, roi_clf=roi_clf, clf_bs=clf_bs, cutpoint=cutpoint,
-        amp_factor=amp_factor, return_sample_weight=return_sample_weight, 
-        pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
+        amp_factor=amp_factor, return_sample_weight=False, 
+        auto_batch_balance=False,
         seed=random_seed)
 
     # Load train and validation set into RAM.
@@ -238,14 +238,25 @@ def run(img_folder, img_extension='dcm',
         sys.stdout.flush()
         validation_set = load_dat_ram(val_generator, nb_val_samples)
         print "Done."; sys.stdout.flush()
+        sparse_y = to_sparse(validation_set[1])
+        for uy in np.unique(sparse_y):
+            print "Nb of samples for class:%d = %d" % \
+                    (uy, (sparse_y==uy).sum())
+        sys.stdout.flush()
     if load_train_ram:
         print "Loading train data into RAM.",
         sys.stdout.flush()
         train_set = load_dat_ram(train_generator, nb_train_samples)
         print "Done."; sys.stdout.flush()
+        sparse_y = to_sparse(train_set[1])
+        for uy in np.unique(sparse_y):
+            print "Nb of samples for class:%d = %d" % \
+                    (uy, (sparse_y==uy).sum())
+        sys.stdout.flush()
         train_generator = imgen_trainval.flow(
-            train_set[0], train_set[1], batch_size=clf_bs, shuffle=True, 
-            seed=random_seed)
+            train_set[0], train_set[1], batch_size=clf_bs, 
+            auto_batch_balance=auto_batch_balance, no_pos_skip=no_pos_skip,
+            shuffle=True, seed=random_seed)
 
     # Load or create model.
     if resume_from is not None:
@@ -304,12 +315,12 @@ def run(img_folder, img_extension='dcm',
         train_generator, 
         samples_per_epoch=patches_per_epoch, 
         nb_epoch=nb_epoch,
-        class_weight=class_weight,
         validation_data=validation_set if load_val_ram else val_generator, 
         nb_val_samples=nb_val_samples, 
-        callbacks=[reduce_lr, early_stopping, auc_checkpointer], 
-        nb_worker=nb_worker if load_train_ram else 1, 
-        pickle_safe=True if load_train_ram else False,
+        callbacks=[reduce_lr, early_stopping, auc_checkpointer],
+        nb_worker=1, pickle_safe=False,
+        # nb_worker=nb_worker if load_train_ram else 1,
+        # pickle_safe=True if load_train_ram else False,
         verbose=2)
 
     if final_model != "NOSAVE":
@@ -373,13 +384,15 @@ if __name__ == '__main__':
     parser.add_argument("--return-sample-weight", dest="return_sample_weight", action="store_true")
     parser.add_argument("--no-return-sample-weight", dest="return_sample_weight", action="store_false")
     parser.set_defaults(return_sample_weight=True)
+    parser.add_argument("--auto-batch-balance", dest="auto_batch_balance", action="store_true")
+    parser.add_argument("--no-auto-batch-balance", dest="auto_batch_balance", action="store_false")
+    parser.set_defaults(auto_batch_balance=True)
     parser.add_argument("--patches-per-epoch", "-ppe", dest="patches_per_epoch", type=int, default=12800)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
     parser.add_argument("--train-nvp-ratio", dest="train_neg_vs_pos_ratio", type=float, default=None)
     parser.add_argument("--no-train-nvp-ratio", dest="train_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
-    parser.add_argument("--pos-class-weight", "-pcw", dest="pos_cls_weight", type=float, default=1.0)
-    parser.add_argument("--neg-class-weight", "-ncw", dest="neg_cls_weight", type=float, default=1.0)
+    parser.add_argument("--nopos-skip", dest="no_pos_skip", type=float, default=0.)
     parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=32)
     parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=5)
     parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
@@ -437,12 +450,11 @@ if __name__ == '__main__':
         cutpoint=args.cutpoint,
         amp_factor=args.amp_factor,
         return_sample_weight=args.return_sample_weight,
+        auto_batch_balance=args.auto_batch_balance,
         patches_per_epoch=args.patches_per_epoch, 
         nb_epoch=args.nb_epoch, 
         train_neg_vs_pos_ratio=args.train_neg_vs_pos_ratio,
         all_neg_skip=args.all_neg_skip,
-        pos_cls_weight=args.pos_cls_weight,
-        neg_cls_weight=args.neg_cls_weight,
         nb_init_filter=args.nb_init_filter, 
         init_filter_size=args.init_filter_size, 
         init_conv_stride=args.init_conv_stride, 
@@ -462,6 +474,7 @@ if __name__ == '__main__':
         net=args.net,
         load_val_ram=args.load_val_ram,
         load_train_ram=args.load_train_ram,
+        no_pos_skip=args.no_pos_skip,
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
