@@ -1,4 +1,4 @@
-import os, argparse, sys
+import os, argparse, sys, pickle
 import numpy as np
 from sklearn.model_selection import train_test_split
 from keras.callbacks import (
@@ -13,27 +13,10 @@ from dm_image import DMImageDataGenerator, to_sparse
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
 from dm_keras_ext import DMMetrics, DMAucModelCheckpoint
-
+from dm_candidROI_score import get_exam_pred
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
-
-
-def subset_img_labs(img_list, lab_list, neg_vs_pos_ratio, seed=12345):
-    rng = np.random.RandomState(seed)
-    img_list = np.array(img_list)
-    lab_list = np.array(lab_list)
-    pos_idx = np.where(lab_list==1)[0]
-    neg_idx = np.where(lab_list==0)[0]
-    nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
-    if nb_neg_desired < len(neg_idx):
-        sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
-        all_idx = np.concatenate([pos_idx, sampled_neg_idx])
-        img_list = img_list[all_idx].tolist()
-        lab_list = lab_list[all_idx].tolist()
-        return img_list, lab_list
-    else:
-        return img_list.tolist(), lab_list.tolist()
 
 
 def load_dat_ram(generator, nb_samples):
@@ -75,19 +58,21 @@ def run(img_folder, img_extension='dcm',
         data_augmentation=False, roi_state=None, clf_bs=32, cutpoint=.5,
         amp_factor=1., return_sample_weight=True, auto_batch_balance=True,
         patches_per_epoch=12800, nb_epoch=20, 
-        train_neg_vs_pos_ratio=None, all_neg_skip=0., 
+        neg_vs_pos_ratio=None, all_neg_skip=0., 
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
         pool_size=2, pool_stride=2, 
         weight_decay=.0001, alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, init_lr=.01,
-        test_size=.2, val_size=.0, val_neg_vs_pos_ratio=None, 
+        test_size=.2, val_size=.0, 
         lr_patience=3, es_patience=10, 
         resume_from=None, net='resnet50', load_val_ram=False, 
         load_train_ram=False, no_pos_skip=0., balance_classes=0.,
+        pred_img_per_batch=1, pred_roi_per_img=32,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_candidROI_best_model.h5',
-        final_model="NOSAVE"):
+        final_model="NOSAVE",
+        pred_out="dl_pred_out.pkl"):
     '''Run ResNet training on candidate ROIs from mammograms
     Args:
         norm_fit_size ([int]): the number of patients used to calculate 
@@ -116,22 +101,31 @@ def run(img_folder, img_extension='dcm',
         subj_list, subj_labs, test_size=test_size, random_state=random_seed, 
         stratify=subj_labs)
     if val_size > 0:  # train/val split.
-        subj_train, subj_val = train_test_split(
-            subj_train, test_size=val_size, random_state=random_seed, 
-            stratify=slab_train)
-    else:  # use test as val.
-        subj_val = subj_test
+        subj_train, subj_val, slab_train, slab_val = train_test_split(
+            subj_train, slab_train, test_size=val_size, 
+            random_state=random_seed, stratify=slab_train)
+    else:  # use test as val. make a copy of the test list.
+        subj_val = list(subj_test)
+        slab_val = list(slab_test)
+    # import pdb; pdb.set_trace()
+    # Subset subject lists to desired ratio.
+    if neg_vs_pos_ratio is not None:
+        subj_train, slab_train = DMMetaManager.subset_subj_list(
+            subj_train, slab_train, neg_vs_pos_ratio, random_seed)
+        subj_val, slab_val = DMMetaManager.subset_subj_list(
+            subj_val, slab_val, neg_vs_pos_ratio, random_seed)
+    print "After sampling, Nb of subjects for train=%d, val=%d, test=%d" \
+            % (len(subj_train), len(subj_val), len(subj_test))
+    # Get image and label lists.
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_val, lab_val = meta_man.get_flatten_img_list(subj_val)
 
-    # Sample data sets to desired ratio.
-    if train_neg_vs_pos_ratio is not None:
-        all_neg_skip = .0  # turn off batch-level sampling.
-        img_train, lab_train = subset_img_labs(
-            img_train, lab_train, train_neg_vs_pos_ratio, random_seed)
-    if val_neg_vs_pos_ratio is not None:
-        img_val, lab_val = subset_img_labs(
-            img_val, lab_val, val_neg_vs_pos_ratio, random_seed)
+    # # Sample data sets to desired ratio.
+    # if img_neg_vs_pos_ratio is not None:
+    #     img_train, lab_train = subset_img_labs(
+    #         img_train, lab_train, img_neg_vs_pos_ratio, random_seed)
+    #     img_val, lab_val = subset_img_labs(
+    #         img_val, lab_val, img_neg_vs_pos_ratio, random_seed)
 
     # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator()
@@ -353,6 +347,84 @@ def run(img_folder, img_extension='dcm',
         print "Best val recall:", best_val_recall
         print "Best val accuracy:", best_val_accuracy
 
+    # Make predictions on train, val, test exam lists.
+    if best_model != 'NOSAVE':
+        print "\n==== Making predictions ===="
+        print "Load best model for prediction:", best_model
+        sys.stdout.flush()
+        pred_model = load_model(best_model)
+        if gpu_count > 1:
+            pred_model = make_parallel(pred_model, gpu_count)
+        
+        print "Load exam lists for train, val, test"; sys.stdout.flush()
+        exam_train = meta_man.get_flatten_exam_list(
+            subj_train, flatten_img_list=True)
+        print "Train exam list length=", len(exam_train); sys.stdout.flush()
+        exam_val = meta_man.get_flatten_exam_list(
+            subj_val, flatten_img_list=True)
+        print "Val exam list length=", len(exam_val); sys.stdout.flush()
+        exam_test = meta_man.get_flatten_exam_list(
+            subj_test, flatten_img_list=True)
+        print "Test exam list length=", len(exam_test); sys.stdout.flush()
+        
+        # if exam_neg_vs_pos_ratio is not None:
+        #     print "Subsetting train and val exam lists to desired ratio"
+        #     sys.stdout.flush()
+        #     exam_train = subset_exam_list(
+        #         exam_train, exam_neg_vs_pos_ratio, random_seed)
+        #     print "Subset train exam list length=", len(exam_train)
+        #     sys.stdout.flush()
+        #     exam_val = subset_exam_list(
+        #         exam_val, exam_neg_vs_pos_ratio, random_seed)
+        #     print "Subset val exam list length=", len(exam_val)
+        #     sys.stdout.flush()
+
+        if do_featurewise_norm:
+            imgen_pred = DMImageDataGenerator()
+            imgen_pred.featurewise_center = True
+            imgen_pred.featurewise_std_normalization = True
+            imgen_pred.mean = imgen_trainval.mean
+            imgen_pred.std = imgen_trainval.std
+        else:
+            imgen_pred.samplewise_center = True
+            imgen_pred.samplewise_std_normalization = True
+        
+        print "Make predictions on train exam list"; sys.stdout.flush()
+        meta_prob_train = get_exam_pred(
+            exam_train, pred_roi_per_img, imgen_pred, 
+            target_height=img_height, target_scale=img_scale,
+            img_per_batch=pred_img_per_batch, roi_size=roi_size,
+            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+            blob_th_step=blob_th_step, seed=random_seed, 
+            dl_model=pred_model)
+        print "Train prediction list length=", len(meta_prob_train)
+        
+        print "Make predictions on val exam list"; sys.stdout.flush()
+        meta_prob_val = get_exam_pred(
+            exam_val, pred_roi_per_img, imgen_pred, 
+            target_height=img_height, target_scale=img_scale,
+            img_per_batch=pred_img_per_batch, roi_size=roi_size,
+            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+            blob_th_step=blob_th_step, seed=random_seed, 
+            dl_model=pred_model)
+        print "Val prediction list length=", len(meta_prob_val)
+        
+        print "Make predictions on test exam list"; sys.stdout.flush()
+        meta_prob_test = get_exam_pred(
+            exam_test, pred_roi_per_img, imgen_pred, 
+            target_height=img_height, target_scale=img_scale,
+            img_per_batch=pred_img_per_batch, roi_size=roi_size,
+            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+            blob_th_step=blob_th_step, seed=random_seed, 
+            dl_model=pred_model)
+        print "Test prediction list length=", len(meta_prob_test)
+        
+        pickle.dump((meta_prob_train, meta_prob_val, meta_prob_test), 
+                    open(pred_out, 'w'))
+
     return hist
 
 
@@ -368,7 +440,9 @@ if __name__ == '__main__':
     parser.set_defaults(do_featurewise_norm=True)
     parser.add_argument("--norm-fit-size", "-nfs", dest="norm_fit_size", type=int, default=10)
     parser.add_argument("--img-per-batch", "-ipb", dest="img_per_batch", type=int, default=2)
+    parser.add_argument("--pred-img-per-batch", dest="pred_img_per_batch", type=int, default=1)
     parser.add_argument("--roi-per-img", "-rpi", dest="roi_per_img", type=int, default=32)
+    parser.add_argument("--pred-roi-per-img", dest="pred_roi_per_img", type=int, default=32)
     parser.add_argument("--roi-size", dest="roi_size", nargs=2, type=int, default=[256, 256])
     parser.add_argument("--one-patch-mode", dest="one_patch_mode", action="store_true")
     parser.add_argument("--no-one-patch-mode", dest="one_patch_mode", action="store_false")
@@ -394,8 +468,8 @@ if __name__ == '__main__':
     parser.set_defaults(auto_batch_balance=True)
     parser.add_argument("--patches-per-epoch", "-ppe", dest="patches_per_epoch", type=int, default=12800)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=20)
-    parser.add_argument("--train-nvp-ratio", dest="train_neg_vs_pos_ratio", type=float, default=None)
-    parser.add_argument("--no-train-nvp-ratio", dest="train_neg_vs_pos_ratio", action="store_const", const=None)
+    parser.add_argument("--nvp-ratio", dest="neg_vs_pos_ratio", type=float, default=None)
+    parser.add_argument("--no-nvp-ratio", dest="neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--allneg-skip", dest="all_neg_skip", type=float, default=0.)
     parser.add_argument("--nopos-skip", dest="no_pos_skip", type=float, default=0.)
     parser.add_argument("--balance-classes", dest="balance_classes", type=float, default=0.)
@@ -412,8 +486,6 @@ if __name__ == '__main__':
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--test-size", "-ts", dest="test_size", type=float, default=.2)
     parser.add_argument("--val-size", "-vs", dest="val_size", type=float, default=.0)
-    parser.add_argument("--val-nvp-ratio", dest="val_neg_vs_pos_ratio", type=float, default=None)
-    parser.add_argument("--no-val-nvp-ratio", dest="val_neg_vs_pos_ratio", action="store_const", const=None)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=3)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=10)
     parser.add_argument("--resume-from", "-rf", dest="resume_from", type=str, default=None)
@@ -434,6 +506,7 @@ if __name__ == '__main__':
                         default="./modelState/dm_candidROI_best_model.h5")
     parser.add_argument("--final-model", "-fm", dest="final_model", type=str, 
                         default="NOSAVE")
+    parser.add_argument("--pred-out", dest="pred_out", type=str, default="dl_pred_out.pkl")
 
     args = parser.parse_args()
     run_opts = dict(
@@ -443,7 +516,9 @@ if __name__ == '__main__':
         do_featurewise_norm=args.do_featurewise_norm,
         norm_fit_size=args.norm_fit_size,
         img_per_batch=args.img_per_batch,
+        pred_img_per_batch=args.pred_img_per_batch,
         roi_per_img=args.roi_per_img,
+        pred_roi_per_img=args.pred_roi_per_img,
         roi_size=tuple(args.roi_size),
         one_patch_mode=args.one_patch_mode,
         low_int_threshold=args.low_int_threshold,
@@ -460,7 +535,7 @@ if __name__ == '__main__':
         auto_batch_balance=args.auto_batch_balance,
         patches_per_epoch=args.patches_per_epoch, 
         nb_epoch=args.nb_epoch, 
-        train_neg_vs_pos_ratio=args.train_neg_vs_pos_ratio,
+        neg_vs_pos_ratio=args.neg_vs_pos_ratio,
         all_neg_skip=args.all_neg_skip,
         nb_init_filter=args.nb_init_filter, 
         init_filter_size=args.init_filter_size, 
@@ -475,7 +550,6 @@ if __name__ == '__main__':
         init_lr=args.init_lr,
         val_size=args.val_size if args.val_size < 1 else int(args.val_size), 
         test_size=args.test_size if args.test_size < 1 else int(args.test_size), 
-        val_neg_vs_pos_ratio=args.val_neg_vs_pos_ratio,
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
         resume_from=args.resume_from,
@@ -487,7 +561,8 @@ if __name__ == '__main__':
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
-        final_model=args.final_model        
+        final_model=args.final_model,
+        pred_out=args.pred_out 
     )
     print "\n>>> Model training options: <<<\n", run_opts, "\n"
     run(args.img_folder, **run_opts)

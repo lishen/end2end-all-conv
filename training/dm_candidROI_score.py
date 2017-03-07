@@ -36,12 +36,11 @@ def get_exam_pred(exam_list, roi_per_img, imgen, **kw_args):
             blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
             blob_th_step=blob_th_step,
             roi_clf=None, return_sample_weight=False, seed=seed)
-
+        # import pdb; pdb.set_trace()
         pred = dl_model.predict_generator(
             roi_generator, val_samples=roi_per_img*len(case_all_imgs))
-        if pred.shape[1] == 3:
-            pred = pred[:, 1]  # cancer class prob.
-        pred = pred.reshape((len(case_all_imgs),-1))  # img x roi prob
+        # New shape: img x roi x output.
+        pred = pred.reshape((len(case_all_imgs), roi_per_img, -1))
         return pred
     #####################################################
 
@@ -59,13 +58,13 @@ def get_exam_pred(exam_list, roi_per_img, imgen, **kw_args):
         try:
             probL = get_breast_prob(exam['L']['img'], **kw_args)
         except KeyError:  # unimaged breast.
-            probL = np.array([[.0]*roi_per_img])
+            probL = np.array([[[1.,0.,0.]]*roi_per_img])
         meta_prob_list.append((subj, exidx, 'L', cancerL, probL))
 
         try:
             probR = get_breast_prob(exam['R']['img'], **kw_args)
         except KeyError:  # unimaged breast.
-            probR = np.array([[.0]*roi_per_img])
+            probR = np.array([[[1.,0.,0.]]*roi_per_img])
         meta_prob_list.append((subj, exidx, 'R', cancerR, probR))
 
     return meta_prob_list

@@ -628,7 +628,59 @@ class DMMetaManager(object):
         return exam_list
 
 
+    @staticmethod
+    def subset_img_labs(img_list, lab_list, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        img_list = np.array(img_list)
+        lab_list = np.array(lab_list)
+        pos_idx = np.where(lab_list==1)[0]
+        neg_idx = np.where(lab_list==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            img_list = img_list[all_idx].tolist()
+            lab_list = lab_list[all_idx].tolist()
+            return img_list, lab_list
+        else:
+            return img_list.tolist(), lab_list.tolist()
 
+
+    @staticmethod
+    def subset_exam_list(exam_list, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        exam_labs = np.array(DMMetaManager.exam_labs(exam_list))
+        pos_idx = np.where(exam_labs==1)[0]
+        neg_idx = np.where(exam_labs==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            sample_mask = np.zeros(len(exam_list), dtype='bool')
+            sample_mask[all_idx] = True
+            sampled_exam_list = [ exam for i,exam in enumerate(exam_list) 
+                                  if sample_mask[i]]
+            return sampled_exam_list
+        else:
+            return exam_list
+
+
+    @staticmethod
+    def subset_subj_list(subj_list, subj_labs, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        subj_list = np.array(subj_list)
+        subj_labs = np.array(subj_labs)
+        pos_idx = np.where(subj_labs==1)[0]
+        neg_idx = np.where(subj_labs==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            subj_list = subj_list[all_idx].tolist()
+            subj_labs = subj_labs[all_idx].tolist()
+            return subj_list, subj_labs
+        else:
+            return subj_list.tolist(), subj_labs.tolist()
 
 
 
