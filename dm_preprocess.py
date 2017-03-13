@@ -131,10 +131,10 @@ class DMImagePreprocessor(object):
             np.zeros_like(img_bin), contours, idx, 255, -1)  # fill the contour.
         # segment the breast.
         img_breast_only = cv2.bitwise_and(img, img, mask=breast_mask)
+        x,y,w,h = cv2.boundingRect(contours[idx])
         if crop:
-            x,y,w,h = cv2.boundingRect(contours[idx])
             img_breast_only = img_breast_only[y:y+h, x:x+w]
-        return img_breast_only
+        return img_breast_only, (x,y,w,h)
 
     
     def remove_pectoral(self, img, breast_mask, high_int_threshold=.8, 
