@@ -72,7 +72,7 @@ def run(img_folder, img_extension='dcm',
         img_tsv='./metadata/images_crosswalk.tsv',
         best_model='./modelState/dm_candidROI_best_model.h5',
         final_model="NOSAVE",
-        pred_out="dl_pred_out.pkl"):
+        pred_trainval=False, pred_out="dl_pred_out.pkl"):
     '''Run ResNet training on candidate ROIs from mammograms
     Args:
         norm_fit_size ([int]): the number of patients used to calculate 
@@ -119,13 +119,6 @@ def run(img_folder, img_extension='dcm',
     # Get image and label lists.
     img_train, lab_train = meta_man.get_flatten_img_list(subj_train)
     img_val, lab_val = meta_man.get_flatten_img_list(subj_val)
-
-    # # Sample data sets to desired ratio.
-    # if img_neg_vs_pos_ratio is not None:
-    #     img_train, lab_train = subset_img_labs(
-    #         img_train, lab_train, img_neg_vs_pos_ratio, random_seed)
-    #     img_val, lab_val = subset_img_labs(
-    #         img_val, lab_val, img_neg_vs_pos_ratio, random_seed)
 
     # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator()
@@ -356,29 +349,19 @@ def run(img_folder, img_extension='dcm',
         if gpu_count > 1:
             pred_model = make_parallel(pred_model, gpu_count)
         
-        print "Load exam lists for train, val, test"; sys.stdout.flush()
-        exam_train = meta_man.get_flatten_exam_list(
-            subj_train, flatten_img_list=True)
-        print "Train exam list length=", len(exam_train); sys.stdout.flush()
-        exam_val = meta_man.get_flatten_exam_list(
-            subj_val, flatten_img_list=True)
-        print "Val exam list length=", len(exam_val); sys.stdout.flush()
+        if pred_trainval:
+            print "Load exam lists for train, val sets"; sys.stdout.flush()
+            exam_train = meta_man.get_flatten_exam_list(
+                subj_train, flatten_img_list=True)
+            print "Train exam list length=", len(exam_train); sys.stdout.flush()
+            exam_val = meta_man.get_flatten_exam_list(
+                subj_val, flatten_img_list=True)
+            print "Val exam list length=", len(exam_val); sys.stdout.flush()
+        print "Load exam list for test set"; sys.stdout.flush()
         exam_test = meta_man.get_flatten_exam_list(
             subj_test, flatten_img_list=True)
         print "Test exam list length=", len(exam_test); sys.stdout.flush()
         
-        # if exam_neg_vs_pos_ratio is not None:
-        #     print "Subsetting train and val exam lists to desired ratio"
-        #     sys.stdout.flush()
-        #     exam_train = subset_exam_list(
-        #         exam_train, exam_neg_vs_pos_ratio, random_seed)
-        #     print "Subset train exam list length=", len(exam_train)
-        #     sys.stdout.flush()
-        #     exam_val = subset_exam_list(
-        #         exam_val, exam_neg_vs_pos_ratio, random_seed)
-        #     print "Subset val exam list length=", len(exam_val)
-        #     sys.stdout.flush()
-
         if do_featurewise_norm:
             imgen_pred = DMImageDataGenerator()
             imgen_pred.featurewise_center = True
@@ -389,27 +372,28 @@ def run(img_folder, img_extension='dcm',
             imgen_pred.samplewise_center = True
             imgen_pred.samplewise_std_normalization = True
         
-        print "Make predictions on train exam list"; sys.stdout.flush()
-        meta_prob_train = get_exam_pred(
-            exam_train, pred_roi_per_img, imgen_pred, 
-            target_height=img_height, target_scale=img_scale,
-            img_per_batch=pred_img_per_batch, roi_size=roi_size,
-            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
-            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
-            blob_th_step=blob_th_step, seed=random_seed, 
-            dl_model=pred_model)
-        print "Train prediction list length=", len(meta_prob_train)
-        
-        print "Make predictions on val exam list"; sys.stdout.flush()
-        meta_prob_val = get_exam_pred(
-            exam_val, pred_roi_per_img, imgen_pred, 
-            target_height=img_height, target_scale=img_scale,
-            img_per_batch=pred_img_per_batch, roi_size=roi_size,
-            low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
-            blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
-            blob_th_step=blob_th_step, seed=random_seed, 
-            dl_model=pred_model)
-        print "Val prediction list length=", len(meta_prob_val)
+        if pred_trainval:
+            print "Make predictions on train exam list"; sys.stdout.flush()
+            meta_prob_train = get_exam_pred(
+                exam_train, pred_roi_per_img, imgen_pred, 
+                target_height=img_height, target_scale=img_scale,
+                img_per_batch=pred_img_per_batch, roi_size=roi_size,
+                low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+                blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+                blob_th_step=blob_th_step, seed=random_seed, 
+                dl_model=pred_model)
+            print "Train prediction list length=", len(meta_prob_train)
+            
+            print "Make predictions on val exam list"; sys.stdout.flush()
+            meta_prob_val = get_exam_pred(
+                exam_val, pred_roi_per_img, imgen_pred, 
+                target_height=img_height, target_scale=img_scale,
+                img_per_batch=pred_img_per_batch, roi_size=roi_size,
+                low_int_threshold=low_int_threshold, blob_min_area=blob_min_area, 
+                blob_min_int=blob_min_int, blob_max_int=blob_max_int, 
+                blob_th_step=blob_th_step, seed=random_seed, 
+                dl_model=pred_model)
+            print "Val prediction list length=", len(meta_prob_val)
         
         print "Make predictions on test exam list"; sys.stdout.flush()
         meta_prob_test = get_exam_pred(
@@ -422,8 +406,11 @@ def run(img_folder, img_extension='dcm',
             dl_model=pred_model)
         print "Test prediction list length=", len(meta_prob_test)
         
-        pickle.dump((meta_prob_train, meta_prob_val, meta_prob_test), 
-                    open(pred_out, 'w'))
+        if pred_trainval:
+            pickle.dump((meta_prob_train, meta_prob_val, meta_prob_test), 
+                        open(pred_out, 'w'))
+        else:
+            pickle.dump(meta_prob_test, open(pred_out, 'w'))
 
     return hist
 
@@ -506,6 +493,9 @@ if __name__ == '__main__':
                         default="./modelState/dm_candidROI_best_model.h5")
     parser.add_argument("--final-model", "-fm", dest="final_model", type=str, 
                         default="NOSAVE")
+    parser.add_argument("--pred-trainval", dest="pred_trainval", action="store_true")
+    parser.add_argument("--no-pred-trainval", dest="pred_trainval", action="store_false")
+    parser.set_defaults(pred_trainval=False)
     parser.add_argument("--pred-out", dest="pred_out", type=str, default="dl_pred_out.pkl")
 
     args = parser.parse_args()
@@ -562,6 +552,7 @@ if __name__ == '__main__':
         img_tsv=args.img_tsv,
         best_model=args.best_model,        
         final_model=args.final_model,
+        pred_trainval=args.pred_trainval,
         pred_out=args.pred_out 
     )
     print "\n>>> Model training options: <<<\n", run_opts, "\n"
