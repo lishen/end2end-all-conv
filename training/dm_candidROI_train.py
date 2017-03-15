@@ -12,40 +12,11 @@ from meta import DMMetaManager
 from dm_image import DMImageDataGenerator, to_sparse
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
-from dm_keras_ext import DMMetrics, DMAucModelCheckpoint
+from dm_keras_ext import DMMetrics, DMAucModelCheckpoint, load_dat_ram
 from dm_candidROI_score import get_exam_pred
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
-
-
-def load_dat_ram(generator, nb_samples):
-    samples_seen = 0
-    X_list = []
-    y_list = []
-    w_list = []
-    while samples_seen < nb_samples:
-        blob_ = generator.next()
-        try:
-            X,y,w = blob_
-            w_list.append(w)
-        except ValueError:
-            X,y = blob_
-        X_list.append(X)
-        y_list.append(y)
-        samples_seen += len(y)
-    try:
-        data_set = (np.concatenate(X_list), 
-                    np.concatenate(y_list),
-                    np.concatenate(w_list))
-    except ValueError:
-        data_set = (np.concatenate(X_list), 
-                    np.concatenate(y_list))
-
-    if len(data_set[0]) != nb_samples:
-        raise Exception('Load data into RAM error')
-
-    return data_set
 
 
 def run(img_folder, img_extension='dcm', 
@@ -123,8 +94,8 @@ def run(img_folder, img_extension='dcm',
     # Create image generators for train, fit and val.
     imgen_trainval = DMImageDataGenerator()
     if data_augmentation:
-        horizontal_flip=True 
-        vertical_flip=True
+        imgen_trainval.horizontal_flip=True 
+        imgen_trainval.vertical_flip=True
         imgen_trainval.rotation_range = 45.
         imgen_trainval.shear_range = np.pi/8.
         # imgen_trainval.width_shift_range = .05
