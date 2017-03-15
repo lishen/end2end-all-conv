@@ -4,6 +4,36 @@ from keras.callbacks import Callback
 import keras.backend as K
 from sklearn.metrics import roc_auc_score
 
+
+def load_dat_ram(generator, nb_samples):
+    samples_seen = 0
+    X_list = []
+    y_list = []
+    w_list = []
+    while samples_seen < nb_samples:
+        blob_ = generator.next()
+        try:
+            X,y,w = blob_
+            w_list.append(w)
+        except ValueError:
+            X,y = blob_
+        X_list.append(X)
+        y_list.append(y)
+        samples_seen += len(y)
+    try:
+        data_set = (np.concatenate(X_list), 
+                    np.concatenate(y_list),
+                    np.concatenate(w_list))
+    except ValueError:
+        data_set = (np.concatenate(X_list), 
+                    np.concatenate(y_list))
+
+    if len(data_set[0]) != nb_samples:
+        raise Exception('Load data into RAM error')
+
+    return data_set
+
+
 class DMMetrics(object):
     '''Classification metrics for the DM challenge
     '''
@@ -124,4 +154,15 @@ class DMAucModelCheckpoint(Callback):
             (self.best_auc, self.best_epoch, self.filepath)
         print ">>> AUROC for all cls:", str(self.best_all_auc), "<<<"
         sys.stdout.flush()
+
+
+class DMFlush(Callback):
+    '''A callback does nothing but flushes stdout after each epoch
+    '''
+    def __init__(self):
+        super(DMFlush, self).__init__()
+
+    def on_epoch_end(self, epoch, logs={}):
+        sys.stdout.flush()
+
 
