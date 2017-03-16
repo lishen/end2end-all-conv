@@ -253,6 +253,20 @@ class ResNetBuilder(object):
             hidden_dropout=hidden_dropout)
 
     @classmethod
+    def build_resnet_38(cls, input_shape, num_outputs, 
+                        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                        pool_size=3, pool_stride=2, 
+                        weight_decay=.0001, alpha=1., l1_ratio=.5,
+                        inp_dropout=.0, hidden_dropout=.0):
+        return cls.build(
+            input_shape, num_outputs, bottleneck, [3, 6, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
+            weight_decay=weight_decay, inp_dropout=inp_dropout, 
+            hidden_dropout=hidden_dropout)
+
+    @classmethod
     def build_resnet_50(cls, input_shape, num_outputs, 
                         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
                         pool_size=3, pool_stride=2, 
