@@ -692,7 +692,7 @@ class DMCandidROIIterator(Iterator):
                 target_scale=self.target_scale, 
                 gs_255=self.gs_255)
             # breast segmentation.
-            img = prep.segment_breast(
+            img,_ = prep.segment_breast(
                 img, low_int_threshold=self.low_int_threshold)
             # blob detection.
             key_pts = self.blob_detector.detect((img/img.max()*255).astype('uint8'))
