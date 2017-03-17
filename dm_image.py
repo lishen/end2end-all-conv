@@ -16,6 +16,23 @@ import dicom
 from dm_preprocess import DMImagePreprocessor as prep
 
 
+def crop_img(img, bbox):
+    '''Crop an image using bounding box
+    '''
+    x,y,w,h = bbox
+    return img[y:y+h, x:x+w]
+
+
+def add_img_margins(img, margin_size):
+    '''Add all zero margins to an image
+    '''
+    enlarged_img = np.zeros((img.shape[0]+margin_size*2, 
+                             img.shape[1]+margin_size*2))
+    enlarged_img[margin_size:margin_size+img.shape[0], 
+                 margin_size:margin_size+img.shape[1]] = img
+    return enlarged_img
+
+
 def to_sparse(y):
     '''Convert labels to sparse format if they are onehot encoded
     '''
