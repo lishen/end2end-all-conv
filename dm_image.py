@@ -121,7 +121,8 @@ class DMImgListIterator(Iterator):
     '''
 
     def __init__(self, img_list, lab_list, image_data_generator,
-                 target_size=(1152, 896), target_scale=4095, gs_255=False, 
+                 target_height=1024, target_size=(1152, 896), 
+                 target_scale=4095, gs_255=False, 
                  dim_ordering='default',
                  class_mode='binary', validation_mode=False,
                  balance_classes=False, all_neg_skip=0.,
@@ -139,6 +140,7 @@ class DMImgListIterator(Iterator):
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
         self.image_data_generator = image_data_generator
+        self.target_height = target_height
         self.target_size = tuple(target_size)
         self.target_scale = target_scale
         self.gs_255 = gs_255
@@ -208,8 +210,8 @@ class DMImgListIterator(Iterator):
             else:
                 last_fname = fname
                 img = read_resize_img(
-                    fname, self.target_size, target_scale=self.target_scale, 
-                    gs_255=self.gs_255)
+                    fname, self.target_size, self.target_height, 
+                    target_scale=self.target_scale, gs_255=self.gs_255)
                 # Always have one channel.
                 if self.dim_ordering == 'th':
                     x = img.reshape((1, img.shape[0], img.shape[1]))
