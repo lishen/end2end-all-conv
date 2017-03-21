@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.random import RandomState
 from os import path
+import os
 from keras.preprocessing.image import (
     ImageDataGenerator, 
     Iterator, 
@@ -962,7 +963,7 @@ class DMNumpyArrayIterator(Iterator):
                                                                   index=current_index + i,
                                                                   hash=np.random.randint(1e4),
                                                                   format=self.save_format)
-                img.save(os.path.join(self.save_to_dir, fname))
+                img.save(path.join(self.save_to_dir, fname))
         if self.y is None:
             return batch_x
         if self.auto_batch_balance:
@@ -970,6 +971,159 @@ class DMNumpyArrayIterator(Iterator):
             for uy in np.unique(sparse_y):
                 batch_w[sparse_y==uy] /= (sparse_y==uy).mean()
             # import pdb; pdb.set_trace()
+            return batch_x, batch_y, batch_w
+        return batch_x, batch_y
+
+
+class DMDirectoryIterator(Iterator):
+
+    def __init__(self, directory, image_data_generator,
+                 target_size=(256, 256), target_scale=None, gs_255=False,
+                 dup_3_channels=False, dim_ordering='default',
+                 classes=None, class_mode='categorical', 
+                 auto_batch_balance=False, batch_size=32, 
+                 shuffle=True, seed=None,
+                 save_to_dir=None, save_prefix='', save_format='jpeg',
+                 follow_links=False):
+        '''
+        Args:
+            dup_3_channels: boolean, whether duplicate the input image onto 3 
+                channels or not. This can be useful when using pretrained models 
+                from databases such as ImageNet.
+        '''
+        if dim_ordering == 'default':
+            dim_ordering = K.image_dim_ordering()
+        self.directory = directory
+        self.image_data_generator = image_data_generator
+        self.target_size = tuple(target_size)
+        self.target_scale = target_scale
+        self.gs_255 = gs_255
+        self.dup_3_channels = dup_3_channels
+        self.dim_ordering = dim_ordering
+        if self.dup_3_channels:
+            if self.dim_ordering == 'tf':
+                self.image_shape = self.target_size + (3,)
+            else:
+                self.image_shape = (3,) + self.target_size
+        else:
+            if self.dim_ordering == 'tf':
+                self.image_shape = self.target_size + (1,)
+            else:
+                self.image_shape = (1,) + self.target_size
+        self.classes = classes
+        if class_mode not in {'categorical', 'binary', 'sparse', None}:
+            raise ValueError('Invalid class_mode:', class_mode,
+                             '; expected one of "categorical", '
+                             '"binary", "sparse", or None.')
+        self.class_mode = class_mode
+        self.auto_batch_balance = auto_batch_balance
+        self.save_to_dir = save_to_dir
+        self.save_prefix = save_prefix
+        self.save_format = save_format
+
+        white_list_formats = {'png', 'jpg', 'jpeg', 'bmp'}
+
+        # first, count the number of samples and classes
+        self.nb_sample = 0
+
+        if not classes:
+            classes = []
+            for subdir in sorted(os.listdir(directory)):
+                if path.isdir(path.join(directory, subdir)):
+                    classes.append(subdir)
+        self.nb_class = len(classes)
+        self.class_indices = dict(zip(classes, range(len(classes))))
+
+        def _recursive_list(subpath):
+            return sorted(os.walk(subpath, followlinks=follow_links), key=lambda tpl: tpl[0])
+
+        for subdir in classes:
+            subpath = path.join(directory, subdir)
+            for root, dirs, files in _recursive_list(subpath):
+                for fname in files:
+                    is_valid = False
+                    for extension in white_list_formats:
+                        if fname.lower().endswith('.' + extension):
+                            is_valid = True
+                            break
+                    if is_valid:
+                        self.nb_sample += 1
+        print('Found %d images belonging to %d classes.' % (self.nb_sample, self.nb_class))
+
+        # second, build an index of the images in the different class subfolders
+        self.filenames = []
+        self.labels = np.zeros((self.nb_sample,), dtype='int32')
+        i = 0
+        for subdir in classes:
+            subpath = path.join(directory, subdir)
+            for root, dirs, files in _recursive_list(subpath):
+                for fname in files:
+                    is_valid = False
+                    for extension in white_list_formats:
+                        if fname.lower().endswith('.' + extension):
+                            is_valid = True
+                            break
+                    if is_valid:
+                        self.labels[i] = self.class_indices[subdir]
+                        i += 1
+                        # add filename relative to directory
+                        absolute_path = path.join(root, fname)
+                        self.filenames.append(path.relpath(absolute_path, directory))
+        super(DMDirectoryIterator, self).__init__(self.nb_sample, batch_size, shuffle, seed)
+
+    def next(self):
+        with self.lock:
+            index_array, current_index, current_batch_size = next(self.index_generator)
+        # The transformation of images is not under thread lock so it can be done in parallel
+        batch_x = np.zeros((current_batch_size,) + self.image_shape)
+        nb_channel = 3 if self.dup_3_channels else 1
+        # build batch of image data
+        for i, j in enumerate(index_array):
+            fname = self.filenames[j]
+            img = read_resize_img(path.join(self.directory, fname),
+                                  target_size=self.target_size,
+                                  target_scale=self.target_scale,
+                                  gs_255=self.gs_255)
+            if self.dim_ordering == 'th':
+                x = np.zeros((nb_channel,) + img.shape)
+                x[0,:,:] = img
+                if self.dup_3_channels:
+                    x[1,:,:] = img
+                    x[2,:,:] = img
+            else:
+                x = np.zeros(img.shape + (nb_channel,))
+                x[:,:,0] = img
+                if self.dup_3_channels:
+                    x[:,:,1] = img
+                    x[:,:,2] = img
+            x = self.image_data_generator.random_transform(x)
+            x = self.image_data_generator.standardize(x)
+            batch_x[i] = x
+        # optionally save augmented images to disk for debugging purposes
+        if self.save_to_dir:
+            for i in range(current_batch_size):
+                img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
+                fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
+                                                                  index=current_index + i,
+                                                                  hash=np.random.randint(1e4),
+                                                                  format=self.save_format)
+                img.save(path.join(self.save_to_dir, fname))
+        # build batch of labels
+        if self.class_mode == 'sparse':
+            batch_y = self.labels[index_array]
+        elif self.class_mode == 'binary':
+            batch_y = self.labels[index_array].astype('float32')
+        elif self.class_mode == 'categorical':
+            batch_y = np.zeros((len(batch_x), self.nb_class), dtype='float32')
+            for i, label in enumerate(self.labels[index_array]):
+                batch_y[i, label] = 1.
+        else:
+            return batch_x
+        sparse_y = self.labels[index_array]
+        if self.auto_batch_balance:
+            batch_w = np.ones_like(sparse_y, dtype='float32')
+            for uy in np.unique(sparse_y):
+                batch_w[sparse_y==uy] /= (sparse_y==uy).mean()
             return batch_x, batch_y, batch_w
         return batch_x, batch_y
 
@@ -1108,7 +1262,28 @@ class DMImageDataGenerator(ImageDataGenerator):
             save_format=save_format)
 
 
-
+    def flow_from_directory(self, directory,
+                            target_size=(256, 256), target_scale=None, 
+                            gs_255=False, 
+                            dup_3_channels=False, dim_ordering='default',
+                            classes=None, class_mode='categorical',
+                            auto_batch_balance=False, batch_size=32, 
+                            shuffle=True, seed=None,
+                            save_to_dir=None,
+                            save_prefix='',
+                            save_format='jpeg',
+                            follow_links=False):
+        return DMDirectoryIterator(
+            directory, self,
+            target_size=target_size, target_scale=target_scale, gs_255=gs_255,
+            dup_3_channels=dup_3_channels, dim_ordering=dim_ordering,
+            classes=classes, class_mode=class_mode,
+            auto_batch_balance=auto_batch_balance, batch_size=batch_size, 
+            shuffle=shuffle, seed=seed,
+            save_to_dir=save_to_dir,
+            save_prefix=save_prefix,
+            save_format=save_format,
+            follow_links=follow_links)
 
 
 
