@@ -879,7 +879,7 @@ class DMNumpyArrayIterator(Iterator):
 
     def __init__(self, x, y, image_data_generator,
                  batch_size=32, auto_batch_balance=True, no_pos_skip=0.,
-                 balance_classes=0., shuffle=False, seed=None,
+                 balance_classes=0., preprocess=None, shuffle=False, seed=None,
                  dim_ordering='default',
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         if y is not None and len(x) != len(y):
@@ -910,6 +910,7 @@ class DMNumpyArrayIterator(Iterator):
         self.auto_batch_balance = auto_batch_balance
         self.no_pos_skip = no_pos_skip
         self.balance_classes = balance_classes
+        self.preprocess = preprocess if preprocess is not None else lambda x: x
         self.dim_ordering = dim_ordering
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
@@ -965,14 +966,14 @@ class DMNumpyArrayIterator(Iterator):
                                                                   format=self.save_format)
                 img.save(path.join(self.save_to_dir, fname))
         if self.y is None:
-            return batch_x
+            return self.preprocess(batch_x)
         if self.auto_batch_balance:
             batch_w = np.ones_like(sparse_y, dtype='float32')
             for uy in np.unique(sparse_y):
                 batch_w[sparse_y==uy] /= (sparse_y==uy).mean()
             # import pdb; pdb.set_trace()
-            return batch_x, batch_y, batch_w
-        return batch_x, batch_y
+            return self.preprocess(batch_x), batch_y, batch_w
+        return self.preprocess(batch_x), batch_y
 
 
 class DMDirectoryIterator(Iterator):
@@ -982,7 +983,7 @@ class DMDirectoryIterator(Iterator):
                  dup_3_channels=False, dim_ordering='default',
                  classes=None, class_mode='categorical', 
                  auto_batch_balance=False, batch_size=32, 
-                 shuffle=True, seed=None,
+                 preprocess=None, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg',
                  follow_links=False):
         '''
@@ -1017,6 +1018,7 @@ class DMDirectoryIterator(Iterator):
                              '"binary", "sparse", or None.')
         self.class_mode = class_mode
         self.auto_batch_balance = auto_batch_balance
+        self.preprocess = preprocess if preprocess is not None else lambda x: x
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
@@ -1118,14 +1120,14 @@ class DMDirectoryIterator(Iterator):
             for i, label in enumerate(self.labels[index_array]):
                 batch_y[i, label] = 1.
         else:
-            return batch_x
+            return self.preprocess(batch_x)
         sparse_y = self.labels[index_array]
         if self.auto_batch_balance:
             batch_w = np.ones_like(sparse_y, dtype='float32')
             for uy in np.unique(sparse_y):
                 batch_w[sparse_y==uy] /= (sparse_y==uy).mean()
-            return batch_x, batch_y, batch_w
-        return batch_x, batch_y
+            return self.preprocess(batch_x), batch_y, batch_w
+        return self.preprocess(batch_x), batch_y
 
 
 class DMImageDataGenerator(ImageDataGenerator):
@@ -1246,7 +1248,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow(self, X, y=None, batch_size=32, 
              auto_batch_balance=True, no_pos_skip=0., balance_classes=0.,
-             shuffle=True, seed=None,
+             preprocess=None, shuffle=True, seed=None,
              save_to_dir=None, save_prefix='', save_format='jpeg'):
         return DMNumpyArrayIterator(
             X, y, self,
@@ -1254,6 +1256,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             auto_batch_balance=auto_batch_balance,
             no_pos_skip = no_pos_skip,
             balance_classes=balance_classes,
+            preprocess=preprocess,
             shuffle=shuffle,
             seed=seed,
             dim_ordering=self.dim_ordering,
@@ -1268,7 +1271,7 @@ class DMImageDataGenerator(ImageDataGenerator):
                             dup_3_channels=False, dim_ordering='default',
                             classes=None, class_mode='categorical',
                             auto_batch_balance=False, batch_size=32, 
-                            shuffle=True, seed=None,
+                            preprocess=None, shuffle=True, seed=None,
                             save_to_dir=None,
                             save_prefix='',
                             save_format='jpeg',
@@ -1279,7 +1282,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             dup_3_channels=dup_3_channels, dim_ordering=dim_ordering,
             classes=classes, class_mode=class_mode,
             auto_batch_balance=auto_batch_balance, batch_size=batch_size, 
-            shuffle=shuffle, seed=seed,
+            preprocess=preprocess, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir,
             save_prefix=save_prefix,
             save_format=save_format,
