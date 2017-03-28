@@ -87,7 +87,7 @@ def read_resize_img(fname, target_size=None, target_height=None,
             interpolation=cv2.INTER_CUBIC)
     img = img.astype('float32')
     if target_scale is not None:
-        img *= target_scale/img.max()
+        img *= target_scale/(img.max() + 1e-7)
     return img
 
 
