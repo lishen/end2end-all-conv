@@ -127,7 +127,7 @@ class DMMetaManager(object):
         return (img, lab)
 
 
-    def get_info_per_exam(self, exam, flatten_img_list=False):
+    def get_info_per_exam(self, exam, flatten_img_list=False, cc_mlo_only=False):
         '''Get training-related info for each exam as a dict
         Args:
             exam (DataFrame): data for an exam.
@@ -170,6 +170,23 @@ class DMMetaManager(object):
         if flatten_img_list:
             for breast in exam_indexed.index.levels[0]:
                 info[breast]['img'] = exam_indexed.loc[breast]['filename'].tolist()
+        elif cc_mlo_only:
+            try:
+                info['L']['CC'] = exam_indexed.loc['L'].loc['CC']['filename'].tolist()
+            except KeyError:
+                info['L']['CC'] = None
+            try:
+                info['R']['CC'] = exam_indexed.loc['R'].loc['CC']['filename'].tolist()
+            except KeyError:
+                info['R']['CC'] = None
+            try:
+                info['L']['MLO'] = exam_indexed.loc['L'].loc['MLO']['filename'].tolist()
+            except KeyError:
+                info['L']['MLO'] = None
+            try:
+                info['R']['MLO'] = exam_indexed.loc['R'].loc['MLO']['filename'].tolist()
+            except KeyError:
+                info['R']['MLO'] = None
         else:
             info['L']['CC'] = None
             info['R']['CC'] = None
@@ -380,7 +397,7 @@ class DMMetaManager(object):
 
 
     def get_flatten_exam_list(self, subj_list=None, meta=False, 
-                              flatten_img_list=False):
+                              flatten_img_list=False, cc_mlo_only=False):
         '''Get exam-level training data list
         Returns:
             A list of all exams for all subjects. Each element is a tuple of 
@@ -391,7 +408,8 @@ class DMMetaManager(object):
             exam_list.append(
                 (subj_id, ex_idx, 
                  self.get_info_per_exam(
-                    exam_dat, flatten_img_list=flatten_img_list))
+                    exam_dat, flatten_img_list=flatten_img_list, 
+                    cc_mlo_only=cc_mlo_only))
             )
         return exam_list
 
