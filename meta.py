@@ -583,7 +583,7 @@ class DMMetaManager(object):
 
     @staticmethod
     def exam_labs(exam_list):
-        return [ 1 if e[2]['L']['cancer'] or e[2]['R']['cancer'] else 0 
+        return [ 1 if e[2]['L']['cancer']==1 or e[2]['R']['cancer']==1 else 0 
                  for e in exam_list ]
 
     @staticmethod
