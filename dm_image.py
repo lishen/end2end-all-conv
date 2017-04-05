@@ -134,6 +134,25 @@ def clust_kpts(key_pts, nb_clust, seed=12345):
     return clt.cluster_centers_
 
 
+def sweep_img_patches(img, patch_size, stride, target_scale=None):
+    nb_row = round(float(img.shape[0] - patch_size)/stride + .49)
+    nb_col = round(float(img.shape[1] - patch_size)/stride + .49)
+    nb_row = int(nb_row)
+    nb_col = int(nb_col)
+    sweep_hei = patch_size + (nb_row - 1)*stride
+    sweep_wid = patch_size + (nb_col - 1)*stride
+    y_gap = int((img.shape[0] - sweep_hei)/2)
+    x_gap = int((img.shape[1] - sweep_wid)/2)
+    patch_list = []
+    for y in xrange(y_gap, y_gap + nb_row*stride, stride):
+        for x in xrange(x_gap, x_gap + nb_col*stride, stride):
+            patch = img[y:y+patch_size, x:x+patch_size]
+            if target_scale is not None:
+                patch *= target_scale/(patch.max() + 1e-7)
+            patch_list.append(patch)
+    return np.stack(patch_list), nb_row, nb_col
+
+
 class DMImgListIterator(Iterator):
     '''An iterator for a flatten image list
     '''
@@ -734,7 +753,7 @@ class DMCandidROIIterator(Iterator):
             # Always have one channel.
             if self.dim_ordering == 'th':
                 xs = roi_patches.reshape(
-                    (1, roi_patches.shape[0], roi_patches.shape[1], 
+                    (roi_patches.shape[0], 1, roi_patches.shape[1], 
                      roi_patches.shape[2]))
             else:
                 xs = roi_patches.reshape(
@@ -906,6 +925,7 @@ class DMNumpyArrayIterator(Iterator):
             self.y = np.asarray(y)
         else:
             self.y = None
+        self.nb_sample = len(x)
         self.image_data_generator = image_data_generator
         self.auto_batch_balance = auto_batch_balance
         self.no_pos_skip = no_pos_skip
