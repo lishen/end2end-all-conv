@@ -6,7 +6,7 @@ from numpy.random import RandomState
 # from sklearn.model_selection import train_test_split
 from keras.models import load_model
 from meta import DMMetaManager
-from dm_image import add_img_margins, read_resize_img
+from dm_image import add_img_margins, read_resize_img, sweep_img_patches
 from dm_keras_ext import DMMetrics as dmm
 from dm_multi_gpu import make_parallel
 from dm_preprocess import DMImagePreprocessor as prep
@@ -24,28 +24,13 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
     if img_list is None:
         return None
 
-    def sweep_img_patches(img):
-        nb_row = int(float(img.shape[0] - patch_size)/stride)
-        nb_col = int(float(img.shape[1] - patch_size)/stride)
-        sweep_hei = patch_size + (nb_row - 1)*stride
-        sweep_wid = patch_size + (nb_col - 1)*stride
-        y_gap = int((img.shape[0] - sweep_hei)/2)
-        x_gap = int((img.shape[1] - sweep_wid)/2)
-        patch_list = []
-        for y in xrange(y_gap, y_gap + nb_row*stride, stride):
-            for x in xrange(x_gap, x_gap + nb_col*stride, stride):
-                patch = img[y:y+patch_size, x:x+patch_size]
-                patch_list.append(patch)
-        return np.stack(patch_list), nb_row, nb_col
-
-
     heatmap_list = []
     for img_fn in img_list:
-        img = read_resize_img(
-            img_fn, target_height=target_height, target_scale=target_scale)
+        img = read_resize_img(img_fn, target_height=target_height)
         img,_ = prep.segment_breast(img)
         img = add_img_margins(img, patch_size/2)
-        patch_dat, nb_row, nb_col = sweep_img_patches(img)
+        patch_dat, nb_row, nb_col = sweep_img_patches(
+            img, patch_size, stride, target_scale=target_scale)
         if dim_ordering == 'th':
             patch_X = np.zeros((patch_dat.shape[0], 3, 
                                 patch_dat.shape[1], 
