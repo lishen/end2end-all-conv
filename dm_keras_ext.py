@@ -207,7 +207,7 @@ def create_optimizer(optim_name, lr):
 
 
 def do_3stage_training(model, train_generator, validation_set, best_model_out, 
-                       samples_per_epoch, top_layer_nb=None, net=None,
+                       samples_per_epoch, gpu_count=1, top_layer_nb=None, net=None,
                        nb_epoch=10, top_layer_epochs=0, all_layer_epochs=0,
                        use_pretrained=True, optim='sgd', init_lr=.01, 
                        top_layer_multiplier=.01, all_layer_multiplier=.0001,
@@ -236,12 +236,18 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
         class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
     else:
         class_weight = None
+    if gpu_count > 1:
+        print "Make the model parallel on %d GPUs" % (gpu_count)
+        sys.stdout.flush()
+        model, org_model = make_parallel(model, gpu_count)
+    else:
+        org_model = model
 
     # Stage 1: train only the last dense layer if using pretrained model.
     print "Start model training",
     if use_pretrained:
         print "on the last dense layer only"
-        for layer in model.layers[:-1]:
+        for layer in org_model.layers[:-1]:
             layer.trainable = False
     else:
         print "on all layers"
@@ -274,12 +280,12 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
     # Stage 2: train only the top layers.
     if use_pretrained:
         print "top layer nb =", top_layer_nb
-        for layer in model.layers[top_layer_nb:]:
+        for layer in org_model.layers[top_layer_nb:]:
             layer.trainable = True
         # adjust weight decay and dropout rate for those BN heavy models.
         if net == 'xception' or net == 'inception' or net == 'resnet50':
-            dense_layer = model.layers[-1]
-            dropout_layer = model.layers[-2]
+            dense_layer = org_model.layers[-1]
+            dropout_layer = org_model.layers[-2]
             dense_layer.W_regularizer.l2 = weight_decay2
             dense_layer.b_regularizer.l2 = weight_decay2*bias_multiplier
             dropout_layer.p = hidden_dropout2
@@ -305,7 +311,7 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
             pass
 
     # Stage 3: train all layers.
-        for layer in model.layers[:top_layer_nb]:
+        for layer in org_model.layers[:top_layer_nb]:
             layer.trainable = True
         model.compile(optimizer=create_optimizer(optim, init_lr*all_layer_multiplier), 
                       loss='categorical_crossentropy', metrics=['accuracy'])
@@ -327,7 +333,7 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
             acc_history = np.append(acc_history, hist.history['val_acc'])
         except KeyError:
             pass
-    return model, loss_history, acc_history
+    return org_model, loss_history, acc_history
 
 
 class DMMetrics(object):
