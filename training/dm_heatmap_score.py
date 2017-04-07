@@ -110,10 +110,10 @@ def run(img_folder, dl_state, img_extension='dcm',
         }
     )
 
-    if gpu_count > 1:
-        print "Make the model parallel on %d GPUs" % (gpu_count)
-        sys.stdout.flush()
-        dl_model = make_parallel(dl_model, gpu_count)
+    # if gpu_count > 1:
+    #     print "Make the model parallel on %d GPUs" % (gpu_count)
+    #     sys.stdout.flush()
+    #     dl_model = make_parallel(dl_model, gpu_count)
 
     # Load preprocess function.
     print "Load preprocess function for net:", net
@@ -153,6 +153,10 @@ def run(img_folder, dl_state, img_extension='dcm',
         heatmap_dat_list.append(dat)
         print "processed %d/%d exams" % (i+1, len(exam_list))
         sys.stdout.flush()
+        ### DEBUG ###
+        #if i >= 9:
+        #    break
+        ### DEBUG ###
     print "Done."
 
     # Save the result.
