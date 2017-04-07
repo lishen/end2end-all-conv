@@ -167,10 +167,6 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     dl_model, preprocess_input, top_layer_nb = get_dl_model(
         net, use_pretrained=True, resume_from=dl_state,
         top_layer_nb=top_layer_nb)    
-    if gpu_count > 1:
-        print "Make the model parallel on %d GPUs" % (gpu_count)
-        sys.stdout.flush()
-        dl_model = make_parallel(dl_model, gpu_count)
 
     # Sweep the whole images and classify patches.
     print "Score image patches and write them to:", train_out
@@ -263,10 +259,16 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         print "Done."; sys.stdout.flush()
 
     # ==== Model finetuning ==== #
+    if gpu_count > 1:
+        print "Make the model parallel on %d GPUs" % (gpu_count)
+        sys.stdout.flush()
+        dl_model = make_parallel(dl_model, gpu_count)
+    nb_train_batches = int(train_generator.nb_sample/batch_size) + 1
+    samples_per_epoch = batch_size*nb_train_batches
     # import pdb; pdb.set_trace()
     dl_model, loss_hist, acc_hist = do_3stage_training(
         dl_model, train_generator, validation_set, best_model, 
-        train_generator.nb_sample, top_layer_nb, net, nb_epoch=nb_epoch,
+        samples_per_epoch, top_layer_nb, net, nb_epoch=nb_epoch,
         top_layer_epochs=top_layer_epochs, all_layer_epochs=all_layer_epochs,
         use_pretrained=True, optim=optim, init_lr=init_lr, 
         top_layer_multiplier=top_layer_multiplier, 
