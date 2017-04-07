@@ -87,7 +87,8 @@ def read_resize_img(fname, target_size=None, target_height=None,
             interpolation=cv2.INTER_CUBIC)
     img = img.astype('float32')
     if target_scale is not None:
-        img *= target_scale/(img.max() + 1e-7)
+        img_max = img.max() if img.max() != 0 else target_scale
+        img *= target_scale/img_max
     return img
 
 
@@ -146,9 +147,10 @@ def sweep_img_patches(img, patch_size, stride, target_scale=None):
     patch_list = []
     for y in xrange(y_gap, y_gap + nb_row*stride, stride):
         for x in xrange(x_gap, x_gap + nb_col*stride, stride):
-            patch = img[y:y+patch_size, x:x+patch_size]
+            patch = img[y:y+patch_size, x:x+patch_size].copy()
             if target_scale is not None:
-                patch *= target_scale/(patch.max() + 1e-7)
+                patch_max = patch.max() if patch.max() != 0 else target_scale
+                patch *= target_scale/patch_max
             patch_list.append(patch)
     return np.stack(patch_list), nb_row, nb_col
 
