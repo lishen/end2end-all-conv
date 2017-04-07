@@ -17,6 +17,7 @@ import keras.backend as K
 dim_ordering = K.image_dim_ordering()
 from sklearn.metrics import roc_auc_score
 from dm_resnet import ResNetBuilder
+from dm_multi_gpu import make_parallel
 
 
 def load_dat_ram(generator, nb_samples):
