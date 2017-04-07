@@ -34,8 +34,16 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
     def write_patches(img_fn, patch_dat, idx, out_dir, img_ext='png'):
         basename = os.path.basename(img_fn)
         fn_no_ext = os.path.splitext(basename)[0]
+        if img_ext == 'png':
+            max_val = 65535.
+        else:
+            max_val = 255.
         for i in idx:
-            patch = patch_dat[i].astype('int32')
+            # import pdb; pdb.set_trace()
+            patch = patch_dat[i]
+            patch_max = patch.max() if patch.max() != 0 else max_val
+            patch *= max_val/patch_max
+            patch = patch.astype('int32')
             mode = 'I' if img_ext == 'png' else None
             patch_img = toimage(patch, high=patch.max(), low=patch.min(),
                                 mode=mode)
