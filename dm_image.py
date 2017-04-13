@@ -151,7 +151,7 @@ def sweep_img_patches(img, patch_size, stride, target_scale=None):
             if target_scale is not None:
                 patch_max = patch.max() if patch.max() != 0 else target_scale
                 patch *= target_scale/patch_max
-            patch_list.append(patch)
+            patch_list.append(patch.astype('float32'))
     return np.stack(patch_list), nb_row, nb_col
 
 
