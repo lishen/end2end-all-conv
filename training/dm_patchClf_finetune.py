@@ -28,7 +28,8 @@ dim_ordering = K.image_dim_ordering()
 def score_write_patches(img_list, lab_list, target_height, target_scale, 
                         patch_size, stride, model, batch_size, preprocess, 
                         neg_out, pos_out, bkg_out, roi_cutoff=.9, bkg_cutoff=.5, 
-                        sample_bkg=True, img_ext='png', random_seed=12345):
+                        sample_bkg=True, img_ext='png', random_seed=12345,
+                        parallelized=False):
     '''Score image patches and write them to an external directory
     '''
     def write_patches(img_fn, patch_dat, idx, out_dir, img_ext='png'):
@@ -63,6 +64,12 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
         # import pdb; pdb.set_trace()
         patch_dat, nb_row, nb_col = sweep_img_patches(
             img, patch_size, stride, target_scale=target_scale)
+        if parallelized and len(patch_dat) % 2 == 1:
+            last_patch = patch_dat[-1:,:,:]
+            patch_dat = np.append(patch_dat, last_patch, axis=0)
+            appended = True
+        else:
+            appended = False
         if dim_ordering == 'th':
             patch_X = np.zeros((patch_dat.shape[0], 3, 
                                 patch_dat.shape[1], 
@@ -80,6 +87,8 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
             patch_X[:,:,:,1] = patch_dat
             patch_X[:,:,:,2] = patch_dat
         pred = model.predict(preprocess(patch_X), batch_size=batch_size)
+        if appended:
+            pred = pred[:-1]
         roi_idx = np.where(pred[:,0] < 1 - roi_cutoff)[0]
         bkg_idx = np.where(pred[:,0] > bkg_cutoff)[0]
         if sample_bkg and len(bkg_idx) > len(roi_idx):
@@ -95,8 +104,8 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
 def run(img_folder, dl_state, best_model, img_extension='dcm', 
         img_height=1024, img_scale=255., neg_vs_pos_ratio=1., 
         val_size=.1, test_size=.15,
-        net='vgg19', batch_size=128, patch_size=256, stride=8,
-        roi_cutoff=.9, bkg_cutoff=.5, sample_bkg=True,
+        net='vgg19', batch_size=128, train_bs_multiplier=.5, 
+        patch_size=256, stride=8, roi_cutoff=.9, bkg_cutoff=.5, sample_bkg=True,
         train_out='./scratch/train', val_out='./scratch/val', 
         test_out='./scratch/test', out_img_ext='png',
         neg_name='benign', pos_name='malignant', bkg_name='background',
@@ -162,11 +171,25 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
             % ((ilab_test==1).sum(), (ilab_test==0).sum())
     sys.stdout.flush()
 
+    # Save the subj lists.
+    print "Saving subject lists to external files.",
+    sys.stdout.flush()
+    pickle.dump((subj_train, subj_val, subj_test), open(out, 'w'))
+    print "Done."
+
     # Load DL model, preprocess function.
     print "Load patch classifier:", dl_state; sys.stdout.flush()
     dl_model, preprocess_input, top_layer_nb = get_dl_model(
         net, use_pretrained=True, resume_from=dl_state,
         top_layer_nb=top_layer_nb)    
+    if gpu_count > 1:
+        print "Make the model parallel on %d GPUs" % (gpu_count)
+        sys.stdout.flush()
+        dl_model, org_model = make_parallel(dl_model, gpu_count)
+        parallelized = True
+    else:
+        org_model = dl_model
+        parallelized = False
 
     # Sweep the whole images and classify patches.
     print "Score image patches and write them to:", train_out
@@ -179,7 +202,8 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         pos_out=os.path.join(train_out, pos_name),
         bkg_out=os.path.join(train_out, bkg_name),
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
-        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed)
+        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
+        parallelized=parallelized)
     print "Wrote %d ROI and %d bkg patches" % (nb_roi_train, nb_bkg_train)
     ####
     print "Score image patches and write them to:", val_out
@@ -192,7 +216,8 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         pos_out=os.path.join(val_out, pos_name),
         bkg_out=os.path.join(val_out, bkg_name),
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
-        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed)
+        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
+        parallelized=parallelized)
     print "Wrote %d ROI and %d bkg patches" % (nb_roi_val, nb_bkg_val)
     ####
     print "Score image patches and write them to:", test_out
@@ -205,7 +230,8 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         pos_out=os.path.join(test_out, pos_name),
         bkg_out=os.path.join(test_out, bkg_name),
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
-        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed)
+        sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
+        parallelized=parallelized)
     print "Wrote %d ROI and %d bkg patches" % (nb_roi_test, nb_bkg_test)
     sys.stdout.flush()
 
@@ -219,6 +245,7 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         train_imgen.shear_range = np.pi/8.
 
     # ==== Train & val set ==== #
+    train_bs = int(batch_size*train_bs_multiplier)
     if load_train_ram:
         raw_imgen = DMImageDataGenerator()
         print "Create generator for raw train set"
@@ -226,14 +253,14 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
             train_out, target_size=(patch_size, patch_size), 
             target_scale=img_scale, dup_3_channels=True,
             classes=[bkg_name, pos_name, neg_name], class_mode='categorical', 
-            batch_size=batch_size, shuffle=False)
+            batch_size=train_bs, shuffle=False)
         print "Loading raw train set into RAM.",
         sys.stdout.flush()
         raw_set = load_dat_ram(raw_generator, raw_generator.nb_sample)
         print "Done."; sys.stdout.flush()
         print "Create generator for train set"
         train_generator = train_imgen.flow(
-            raw_set[0], raw_set[1], batch_size=batch_size, 
+            raw_set[0], raw_set[1], batch_size=train_bs, 
             auto_batch_balance=True, preprocess=preprocess_input, 
             shuffle=True, seed=random_seed)
     else:
@@ -242,29 +269,40 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
             train_out, target_size=(patch_size, patch_size), 
             target_scale=img_scale, dup_3_channels=True,
             classes=[bkg_name, pos_name, neg_name], class_mode='categorical', 
-            auto_batch_balance=True, batch_size=batch_size, 
+            auto_batch_balance=True, batch_size=train_bs, 
             preprocess=preprocess_input, shuffle=True, seed=random_seed)
 
     print "Create generator for val set"
+    sys.stdout.flush()
     validation_set = val_imgen.flow_from_directory(
         val_out, target_size=(patch_size, patch_size), target_scale=img_scale,
         dup_3_channels=True, classes=[bkg_name, pos_name, neg_name], 
         class_mode='categorical', batch_size=batch_size, 
         preprocess=preprocess_input, shuffle=False)
-    sys.stdout.flush()
+    val_samples = validation_set.nb_sample
+    if parallelized and val_samples % batch_size != 0:
+        val_samples -= val_samples % batch_size
+    print "Validation samples =", val_samples; sys.stdout.flush()
     if load_val_ram:
         print "Loading validation set into RAM.",
         sys.stdout.flush()
-        validation_set = load_dat_ram(validation_set, validation_set.nb_sample)
-        print "Done."; sys.stdout.flush()
+        validation_set = load_dat_ram(validation_set, val_samples)
+        # if len(validation_set[0]) != val_samples:
+        #     validation_set = list(validation_set)
+        #     for i in xrange(len(validation_set)):
+        #         validation_set[i] = validation_set[i][:val_samples]
+        #     validation_set = tuple(validation_set)
+        print "Done."
+        print "Loaded %d val samples" % (len(validation_set[0]))
+        sys.stdout.flush()
 
     # ==== Model finetuning ==== #
-    nb_train_batches = int(train_generator.nb_sample/batch_size) + 1
-    samples_per_epoch = batch_size*nb_train_batches
+    train_batches = int(train_generator.nb_sample/train_bs) + 1
+    samples_per_epoch = train_bs*train_batches
     # import pdb; pdb.set_trace()
     dl_model, loss_hist, acc_hist = do_3stage_training(
-        dl_model, train_generator, validation_set, best_model, 
-        samples_per_epoch, gpu_count, top_layer_nb, net, nb_epoch=nb_epoch,
+        dl_model, org_model, train_generator, validation_set, val_samples, 
+        best_model, samples_per_epoch, top_layer_nb, net, nb_epoch=nb_epoch,
         top_layer_epochs=top_layer_epochs, all_layer_epochs=all_layer_epochs,
         use_pretrained=True, optim=optim, init_lr=init_lr, 
         top_layer_multiplier=top_layer_multiplier, 
@@ -292,20 +330,20 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         dup_3_channels=True, classes=[bkg_name, pos_name, neg_name], 
         class_mode='categorical', batch_size=batch_size, 
         preprocess=preprocess_input, shuffle=False)
+    test_samples = test_generator.nb_sample
+    if parallelized and test_samples % batch_size != 0:
+        test_samples -= test_samples % batch_size
+    print "Test samples =", test_samples
     print "Load saved best model:", best_model + '.',
     sys.stdout.flush()
-    saved_model = load_model(best_model)
+    # import pdb; pdb.set_trace()
+    org_model.load_weights(best_model)
+    # saved_model = load_model(best_model)
     print "Done."
-    test_res = saved_model.evaluate_generator(
-        test_generator, test_generator.nb_sample, nb_worker=nb_worker, 
+    test_res = dl_model.evaluate_generator(
+        test_generator, test_samples, nb_worker=nb_worker, 
         pickle_safe=True)
     print "Evaluation result on test set:", test_res
-
-    # Save the result.
-    print "Saving subject lists to external files.",
-    sys.stdout.flush()
-    pickle.dump((subj_train, subj_val, subj_test), open(out, 'w'))
-    print "Done."
 
  
 if __name__ == '__main__':
@@ -324,6 +362,7 @@ if __name__ == '__main__':
     parser.add_argument("--val-size", dest="val_size", type=float, default=.1)
     parser.add_argument("--net", dest="net", type=str, default="vgg19")    
     parser.add_argument("--batch-size", dest="batch_size", type=int, default=128)
+    parser.add_argument("--train-bs-multiplier", dest="train_bs_multiplier", type=float, default=.5)
     parser.add_argument("--patch-size", dest="patch_size", type=int, default=256)
     parser.add_argument("--stride", dest="stride", type=int, default=8)
     parser.add_argument("--roi-cutoff", dest="roi_cutoff", type=float, default=.9)
@@ -379,6 +418,7 @@ if __name__ == '__main__':
         val_size=args.val_size,
         net=args.net,
         batch_size=args.batch_size,
+        train_bs_multiplier=args.train_bs_multiplier,
         patch_size=args.patch_size,
         stride=args.stride,
         roi_cutoff=args.roi_cutoff,

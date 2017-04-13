@@ -18,7 +18,7 @@ dim_ordering = K.image_dim_ordering()
 
 
 def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride, 
-                     model, batch_size, preprocess):
+                     model, batch_size, preprocess, parallelized=False):
     '''Sweep image data with a trained model to produce prob heatmaps
     '''
     if img_list is None:
@@ -31,6 +31,13 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
         img = add_img_margins(img, patch_size/2)
         patch_dat, nb_row, nb_col = sweep_img_patches(
             img, patch_size, stride, target_scale=target_scale)
+        # Make even patches if necessary.
+        if parallelized and len(patch_dat) % 2 == 1:
+            last_patch = patch_dat[-1:,:,:]
+            patch_dat = np.append(patch_dat, last_patch, axis=0)
+            appended = True
+        else:
+            appended = False
         if dim_ordering == 'th':
             patch_X = np.zeros((patch_dat.shape[0], 3, 
                                 patch_dat.shape[1], 
@@ -49,6 +56,8 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
             patch_X[:,:,:,2] = patch_dat
         # import pdb; pdb.set_trace()
         pred = model.predict(preprocess(patch_X), batch_size=batch_size)
+        if appended:  # remove the appended prediction.
+            pred = pred[:-1]
         heatmap = pred.reshape((nb_row, nb_col, pred.shape[1]))
         heatmap_list.append(heatmap)
     return heatmap_list 
@@ -110,10 +119,13 @@ def run(img_folder, dl_state, img_extension='dcm',
         }
     )
 
-    # if gpu_count > 1:
-    #     print "Make the model parallel on %d GPUs" % (gpu_count)
-    #     sys.stdout.flush()
-    #     dl_model = make_parallel(dl_model, gpu_count)
+    if gpu_count > 1:
+        print "Make the model parallel on %d GPUs" % (gpu_count)
+        sys.stdout.flush()
+        dl_model, _ = make_parallel(dl_model, gpu_count)
+        parallelized = True
+    else:
+        parallelized = False
 
     # Load preprocess function.
     print "Load preprocess function for net:", net
@@ -140,16 +152,16 @@ def run(img_folder, dl_state, img_extension='dcm',
                 'R':{'cancer':e[2]['R']['cancer']}})
         dat[2]['L']['CC'] = get_prob_heatmap(
             e[2]['L']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input)
+            dl_model, batch_size, preprocess_input, parallelized)
         dat[2]['L']['MLO'] = get_prob_heatmap(
             e[2]['L']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input)
+            dl_model, batch_size, preprocess_input, parallelized)
         dat[2]['R']['CC'] = get_prob_heatmap(
             e[2]['R']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input)
+            dl_model, batch_size, preprocess_input, parallelized)
         dat[2]['R']['MLO'] = get_prob_heatmap(
             e[2]['R']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input)
+            dl_model, batch_size, preprocess_input, parallelized)
         heatmap_dat_list.append(dat)
         print "processed %d/%d exams" % (i+1, len(exam_list))
         sys.stdout.flush()

@@ -207,8 +207,9 @@ def create_optimizer(optim_name, lr):
         raise Exception('Unknown optimizer name: ' + optim_name)
 
 
-def do_3stage_training(model, train_generator, validation_set, best_model_out, 
-                       samples_per_epoch, gpu_count=1, top_layer_nb=None, net=None,
+def do_3stage_training(model, org_model, train_generator, validation_set, 
+                       val_samples, best_model_out, samples_per_epoch, 
+                       top_layer_nb=None, net=None,
                        nb_epoch=10, top_layer_epochs=0, all_layer_epochs=0,
                        use_pretrained=True, optim='sgd', init_lr=.01, 
                        top_layer_multiplier=.01, all_layer_multiplier=.0001,
@@ -237,12 +238,6 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
         class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
     else:
         class_weight = None
-    if gpu_count > 1:
-        print "Make the model parallel on %d GPUs" % (gpu_count)
-        sys.stdout.flush()
-        model, org_model = make_parallel(model, gpu_count)
-    else:
-        org_model = model
 
     # Stage 1: train only the last dense layer if using pretrained model.
     print "Start model training",
@@ -255,17 +250,13 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
     sys.stdout.flush()
     model.compile(optimizer=create_optimizer(optim, init_lr), 
                   loss='categorical_crossentropy', metrics=['accuracy'])
-    if isinstance(validation_set, tuple):
-        nb_val_samples = len(validation_set[0])
-    else:
-        nb_val_samples = validation_set.nb_sample
     hist = model.fit_generator(
         train_generator, 
         samples_per_epoch=samples_per_epoch, 
         nb_epoch=nb_epoch,
         class_weight=class_weight,
         validation_data=validation_set,
-        nb_val_samples=nb_val_samples,
+        nb_val_samples=val_samples,
         callbacks=callbacks, 
         nb_worker=nb_worker, 
         pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
@@ -299,7 +290,7 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
             nb_epoch=top_layer_epochs,
             class_weight=class_weight,
             validation_data=validation_set,
-            nb_val_samples=nb_val_samples,
+            nb_val_samples=val_samples,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
             pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
@@ -323,7 +314,7 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
             nb_epoch=all_layer_epochs,
             class_weight=class_weight,
             validation_data=validation_set,
-            nb_val_samples=nb_val_samples,
+            nb_val_samples=val_samples,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
             pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
@@ -334,7 +325,7 @@ def do_3stage_training(model, train_generator, validation_set, best_model_out,
             acc_history = np.append(acc_history, hist.history['val_acc'])
         except KeyError:
             pass
-    return org_model, loss_history, acc_history
+    return model, loss_history, acc_history
 
 
 class DMMetrics(object):
