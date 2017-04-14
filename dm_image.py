@@ -1002,6 +1002,7 @@ class DMDirectoryIterator(Iterator):
 
     def __init__(self, directory, image_data_generator,
                  target_size=(256, 256), target_scale=None, gs_255=False,
+                 equalize_hist=False,
                  dup_3_channels=False, dim_ordering='default',
                  classes=None, class_mode='categorical', 
                  auto_batch_balance=False, batch_size=32, 
@@ -1021,6 +1022,8 @@ class DMDirectoryIterator(Iterator):
         self.target_size = tuple(target_size)
         self.target_scale = target_scale
         self.gs_255 = gs_255
+        self.equalize_hist = equalize_hist
+        # self.xtype = 'uint8' if equalize_hist else 'float32'
         self.dup_3_channels = dup_3_channels
         self.dim_ordering = dim_ordering
         if self.dup_3_channels:
@@ -1099,7 +1102,8 @@ class DMDirectoryIterator(Iterator):
         with self.lock:
             index_array, current_index, current_batch_size = next(self.index_generator)
         # The transformation of images is not under thread lock so it can be done in parallel
-        batch_x = np.zeros((current_batch_size,) + self.image_shape)
+        batch_x = np.zeros((current_batch_size,) + self.image_shape, 
+                           dtype='float32')
         nb_channel = 3 if self.dup_3_channels else 1
         # build batch of image data
         for i, j in enumerate(index_array):
@@ -1108,14 +1112,16 @@ class DMDirectoryIterator(Iterator):
                                   target_size=self.target_size,
                                   target_scale=self.target_scale,
                                   gs_255=self.gs_255)
+            if self.equalize_hist:
+                img = cv2.equalizeHist(img.astype('uint8'))
             if self.dim_ordering == 'th':
-                x = np.zeros((nb_channel,) + img.shape)
+                x = np.zeros((nb_channel,) + img.shape, dtype='float32')
                 x[0,:,:] = img
                 if self.dup_3_channels:
                     x[1,:,:] = img
                     x[2,:,:] = img
             else:
-                x = np.zeros(img.shape + (nb_channel,))
+                x = np.zeros(img.shape + (nb_channel,), dtype='float32')
                 x[:,:,0] = img
                 if self.dup_3_channels:
                     x[:,:,1] = img
@@ -1289,7 +1295,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_directory(self, directory,
                             target_size=(256, 256), target_scale=None, 
-                            gs_255=False, 
+                            gs_255=False, equalize_hist=False,
                             dup_3_channels=False, dim_ordering='default',
                             classes=None, class_mode='categorical',
                             auto_batch_balance=False, batch_size=32, 
@@ -1301,6 +1307,7 @@ class DMImageDataGenerator(ImageDataGenerator):
         return DMDirectoryIterator(
             directory, self,
             target_size=target_size, target_scale=target_scale, gs_255=gs_255,
+            equalize_hist=equalize_hist,
             dup_3_channels=dup_3_channels, dim_ordering=dim_ordering,
             classes=classes, class_mode=class_mode,
             auto_batch_balance=auto_batch_balance, batch_size=batch_size, 
