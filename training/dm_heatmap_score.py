@@ -18,7 +18,10 @@ dim_ordering = K.image_dim_ordering()
 
 
 def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride, 
-                     model, batch_size, preprocess, parallelized=False):
+                     model, batch_size, 
+                     featurewise_center=False, featurewise_mean=91.6,
+                     preprocess=None, parallelized=False, 
+                     equalize_hist=False):
     '''Sweep image data with a trained model to produce prob heatmaps
     '''
     if img_list is None:
@@ -30,7 +33,8 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
         img,_ = prep.segment_breast(img)
         img = add_img_margins(img, patch_size/2)
         patch_dat, nb_row, nb_col = sweep_img_patches(
-            img, patch_size, stride, target_scale=target_scale)
+            img, patch_size, stride, target_scale=target_scale, 
+            equalize_hist=equalize_hist)
         # Make even patches if necessary.
         if parallelized and len(patch_dat) % 2 == 1:
             last_patch = patch_dat[-1:,:,:]
@@ -42,7 +46,7 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
             patch_X = np.zeros((patch_dat.shape[0], 3, 
                                 patch_dat.shape[1], 
                                 patch_dat.shape[2]), 
-                                dtype='float64')
+                                dtype='float32')
             patch_X[:,0,:,:] = patch_dat
             patch_X[:,1,:,:] = patch_dat
             patch_X[:,2,:,:] = patch_dat
@@ -50,12 +54,15 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
             patch_X = np.zeros((patch_dat.shape[0], 
                                 patch_dat.shape[1], 
                                 patch_dat.shape[2], 3), 
-                                dtype='float64')
+                                dtype='float32')
             patch_X[:,:,:,0] = patch_dat
             patch_X[:,:,:,1] = patch_dat
             patch_X[:,:,:,2] = patch_dat
-        # import pdb; pdb.set_trace()
-        pred = model.predict(preprocess(patch_X), batch_size=batch_size)
+        if featurewise_center:
+            patch_X -= featurewise_mean
+        elif preprocess is not None:
+            patch_X = preprocess(patch_X)
+        pred = model.predict(patch_X, batch_size=batch_size)
         if appended:  # remove the appended prediction.
             pred = pred[:-1]
         heatmap = pred.reshape((nb_row, nb_col, pred.shape[1]))
@@ -64,7 +71,9 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
         
 
 def run(img_folder, dl_state, img_extension='dcm', 
-        img_height=1024, img_scale=255., neg_vs_pos_ratio=1., 
+        img_height=1024, img_scale=255., equalize_hist=False, 
+        featurewise_center=False, featurewise_mean=91.6,
+        neg_vs_pos_ratio=1., 
         net='vgg19', batch_size=128, patch_size=256, stride=8,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
@@ -128,19 +137,22 @@ def run(img_folder, dl_state, img_extension='dcm',
         parallelized = False
 
     # Load preprocess function.
-    print "Load preprocess function for net:", net
-    if net == 'resnet50':
-        from keras.applications.resnet50 import ResNet50, preprocess_input
-    elif net == 'vgg16':
-        from keras.applications.vgg16 import VGG16, preprocess_input
-    elif net == 'vgg19':
-        from keras.applications.vgg19 import VGG19, preprocess_input
-    elif net == 'xception':
-        from keras.applications.xception import Xception, preprocess_input
-    elif net == 'inception':
-        from keras.applications.inception_v3 import InceptionV3, preprocess_input
+    if featurewise_center:
+        preprocess_input = None
     else:
-        raise Exception("Pretrained model is not available: " + net)
+        print "Load preprocess function for net:", net
+        if net == 'resnet50':
+            from keras.applications.resnet50 import preprocess_input
+        elif net == 'vgg16':
+            from keras.applications.vgg16 import preprocess_input
+        elif net == 'vgg19':
+            from keras.applications.vgg19 import preprocess_input
+        elif net == 'xception':
+            from keras.applications.xception import preprocess_input
+        elif net == 'inception':
+            from keras.applications.inception_v3 import preprocess_input
+        else:
+            raise Exception("Pretrained model is not available: " + net)
 
     # Sweep the whole images and classify patches.
     print "Generate prob heatmaps for exam list"
@@ -152,21 +164,29 @@ def run(img_folder, dl_state, img_extension='dcm',
                 'R':{'cancer':e[2]['R']['cancer']}})
         dat[2]['L']['CC'] = get_prob_heatmap(
             e[2]['L']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input, parallelized)
+            dl_model, batch_size, featurewise_center=featurewise_center, 
+            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+            parallelized=parallelized, equalize_hist=equalize_hist)
         dat[2]['L']['MLO'] = get_prob_heatmap(
             e[2]['L']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input, parallelized)
+            dl_model, batch_size, featurewise_center=featurewise_center, 
+            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+            parallelized=parallelized, equalize_hist=equalize_hist)
         dat[2]['R']['CC'] = get_prob_heatmap(
             e[2]['R']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input, parallelized)
+            dl_model, batch_size, featurewise_center=featurewise_center, 
+            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+            parallelized=parallelized, equalize_hist=equalize_hist)
         dat[2]['R']['MLO'] = get_prob_heatmap(
             e[2]['R']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, preprocess_input, parallelized)
+            dl_model, batch_size, featurewise_center=featurewise_center, 
+            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+            parallelized=parallelized, equalize_hist=equalize_hist)
         heatmap_dat_list.append(dat)
         print "processed %d/%d exams" % (i+1, len(exam_list))
         sys.stdout.flush()
         ### DEBUG ###
-        #if i >= 9:
+        # if i >= 1:
         #    break
         ### DEBUG ###
     print "Done."
@@ -186,6 +206,13 @@ if __name__ == '__main__':
     parser.add_argument("--img-extension", "-ext", dest="img_extension", type=str, default="dcm")
     parser.add_argument("--img-height", "-ih", dest="img_height", type=int, default=1024)
     parser.add_argument("--img-scale", "-ic", dest="img_scale", type=float, default=255.)
+    parser.add_argument("--equalize-hist", dest="equalize_hist", action="store_true")
+    parser.add_argument("--no-equalize-hist", dest="equalize_hist", action="store_false")
+    parser.set_defaults(equalize_hist=False)
+    parser.add_argument("--featurewise-center", dest="featurewise_center", action="store_true")
+    parser.add_argument("--no-featurewise-center", dest="featurewise_center", action="store_false")
+    parser.set_defaults(featurewise_center=False)
+    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=91.6)
     parser.add_argument("--neg-vs-pos-ratio", dest="neg_vs_pos_ratio", type=float, default=10.)
     parser.add_argument("--no-neg-vs-pos-ratio", dest="neg_vs_pos_ratio", 
                         action="store_const", const=None)
@@ -206,6 +233,9 @@ if __name__ == '__main__':
         img_extension=args.img_extension, 
         img_height=args.img_height,
         img_scale=args.img_scale,
+        equalize_hist=args.equalize_hist,
+        featurewise_center=args.featurewise_center,
+        featurewise_mean=args.featurewise_mean,
         neg_vs_pos_ratio=args.neg_vs_pos_ratio,
         net=args.net,
         batch_size=args.batch_size,

@@ -135,7 +135,8 @@ def clust_kpts(key_pts, nb_clust, seed=12345):
     return clt.cluster_centers_
 
 
-def sweep_img_patches(img, patch_size, stride, target_scale=None):
+def sweep_img_patches(img, patch_size, stride, target_scale=None, 
+                      equalize_hist=False):
     nb_row = round(float(img.shape[0] - patch_size)/stride + .49)
     nb_col = round(float(img.shape[1] - patch_size)/stride + .49)
     nb_row = int(nb_row)
@@ -151,6 +152,8 @@ def sweep_img_patches(img, patch_size, stride, target_scale=None):
             if target_scale is not None:
                 patch_max = patch.max() if patch.max() != 0 else target_scale
                 patch *= target_scale/patch_max
+            if equalize_hist:
+                patch = cv2.equalizeHist(patch.astype('uint8'))
             patch_list.append(patch.astype('float32'))
     return np.stack(patch_list), nb_row, nb_col
 
