@@ -238,6 +238,10 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
     else:
         class_weight = None
+    if nb_worker == 1:
+        pickle_safe = False
+    else:
+        pickle_safe = True
 
     # Stage 1: train only the last dense layer if using pretrained model.
     print "Start model training",
@@ -259,7 +263,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         nb_val_samples=val_samples,
         callbacks=callbacks, 
         nb_worker=nb_worker, 
-        pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
+        pickle_safe=pickle_safe,
         verbose=2)
     print "Done."
     try:
@@ -293,7 +297,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
             nb_val_samples=val_samples,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
-            pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
+            pickle_safe=pickle_safe,
             verbose=2, initial_epoch=len(loss_history))
         print "Done."
         try:
@@ -317,7 +321,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
             nb_val_samples=val_samples,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
-            pickle_safe=True,  # turn on pickle_safe to avoid a strange error.
+            pickle_safe=pickle_safe,
             verbose=2, initial_epoch=len(loss_history))
         print "Done."
         try:
