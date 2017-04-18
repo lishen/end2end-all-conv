@@ -26,8 +26,11 @@ dim_ordering = K.image_dim_ordering()
 
 
 def score_write_patches(img_list, lab_list, target_height, target_scale, 
-                        patch_size, stride, model, batch_size, preprocess, 
-                        neg_out, pos_out, bkg_out, roi_cutoff=.9, bkg_cutoff=.5, 
+                        patch_size, stride, model, batch_size, 
+                        neg_out, pos_out, bkg_out, 
+                        preprocess=None, equalize_hist=False, 
+                        featurewise_center=False, featurewise_mean=91.6, 
+                        roi_cutoff=.9, bkg_cutoff=[.5, 1.], 
                         sample_bkg=True, img_ext='png', random_seed=12345,
                         parallelized=False):
     '''Score image patches and write them to an external directory
@@ -40,7 +43,6 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
         else:
             max_val = 255.
         for i in idx:
-            # import pdb; pdb.set_trace()
             patch = patch_dat[i]
             patch_max = patch.max() if patch.max() != 0 else max_val
             patch *= max_val/patch_max
@@ -50,9 +52,7 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
                                 mode=mode)
             filename = fn_no_ext + "_%06d" % (i) + '.' + img_ext
             fullname = os.path.join(out_dir, filename)
-            # import pdb; pdb.set_trace()
             patch_img.save(fullname)
-
 
     rng = RandomState(random_seed)
     nb_roi = 0
@@ -61,9 +61,10 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
         img = read_resize_img(img_fn, target_height=target_height)
         img,_ = prep.segment_breast(img)
         img = add_img_margins(img, patch_size/2)
-        # import pdb; pdb.set_trace()
         patch_dat, nb_row, nb_col = sweep_img_patches(
-            img, patch_size, stride, target_scale=target_scale)
+            img, patch_size, stride, target_scale=target_scale, 
+            equalize_hist=equalize_hist)
+        org_patch_dat = patch_dat.copy()
         if parallelized and len(patch_dat) % 2 == 1:
             last_patch = patch_dat[-1:,:,:]
             patch_dat = np.append(patch_dat, last_patch, axis=0)
@@ -86,26 +87,34 @@ def score_write_patches(img_list, lab_list, target_height, target_scale,
             patch_X[:,:,:,0] = patch_dat
             patch_X[:,:,:,1] = patch_dat
             patch_X[:,:,:,2] = patch_dat
-        pred = model.predict(preprocess(patch_X), batch_size=batch_size)
+        if featurewise_center:
+            patch_X -= featurewise_mean
+        elif preprocess is not None:
+            patch_X = preprocess(patch_X)
+        pred = model.predict(patch_X, batch_size=batch_size)
+        # import pdb; pdb.set_trace()
         if appended:
             pred = pred[:-1]
         roi_idx = np.where(pred[:,0] < 1 - roi_cutoff)[0]
-        bkg_idx = np.where(pred[:,0] > bkg_cutoff)[0]
+        bkg_idx = np.where(
+            np.logical_and(pred[:,0] > bkg_cutoff[0], 
+                           pred[:,0] <= bkg_cutoff[1]))[0]
         if sample_bkg and len(bkg_idx) > len(roi_idx):
             bkg_idx = rng.choice(bkg_idx, len(roi_idx), replace=False)
         roi_out = pos_out if img_lab==1 else neg_out
-        write_patches(img_fn, patch_dat, roi_idx, roi_out, img_ext)
-        write_patches(img_fn, patch_dat, bkg_idx, bkg_out, img_ext)
+        write_patches(img_fn, org_patch_dat, roi_idx, roi_out, img_ext)
+        write_patches(img_fn, org_patch_dat, bkg_idx, bkg_out, img_ext)
         nb_roi += len(roi_idx)
         nb_bkg += len(bkg_idx)
     return nb_roi, nb_bkg
         
 
 def run(img_folder, dl_state, best_model, img_extension='dcm', 
-        img_height=1024, img_scale=255., neg_vs_pos_ratio=1., 
-        val_size=.1, test_size=.15,
+        img_height=1024, img_scale=255., equalize_hist=False,
+        featurewise_center=False, featurewise_mean=91.6,
+        neg_vs_pos_ratio=1., val_size=.1, test_size=.15,
         net='vgg19', batch_size=128, train_bs_multiplier=.5, 
-        patch_size=256, stride=8, roi_cutoff=.9, bkg_cutoff=.5, sample_bkg=True,
+        patch_size=256, stride=8, roi_cutoff=.9, bkg_cutoff=[.5, 1.], sample_bkg=True,
         train_out='./scratch/train', val_out='./scratch/val', 
         test_out='./scratch/test', out_img_ext='png',
         neg_name='benign', pos_name='malignant', bkg_name='background',
@@ -152,9 +161,9 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
 
     # Get image lists.
     # >>>> Debug <<<< #
-    # subj_train = subj_train[:1]
-    # subj_val = subj_val[:1]
-    # subj_test = subj_test[:1]
+    # subj_train = subj_train[:5]
+    # subj_val = subj_val[:5]
+    # subj_test = subj_test[:5]
     # >>>> Debug <<<< #
     print "Get flattened image lists"
     img_train, ilab_train = meta_man.get_flatten_img_list(subj_train)
@@ -181,7 +190,9 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     print "Load patch classifier:", dl_state; sys.stdout.flush()
     dl_model, preprocess_input, top_layer_nb = get_dl_model(
         net, use_pretrained=True, resume_from=dl_state,
-        top_layer_nb=top_layer_nb)    
+        top_layer_nb=top_layer_nb)
+    if featurewise_center:
+        preprocess_input = None
     if gpu_count > 1:
         print "Make the model parallel on %d GPUs" % (gpu_count)
         sys.stdout.flush()
@@ -197,10 +208,11 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     nb_roi_train, nb_bkg_train = score_write_patches(
         img_train, ilab_train, img_height, img_scale,
         patch_size, stride, dl_model, batch_size, 
-        preprocess_input, 
         neg_out=os.path.join(train_out, neg_name),
         pos_out=os.path.join(train_out, pos_name),
         bkg_out=os.path.join(train_out, bkg_name),
+        preprocess=preprocess_input, equalize_hist=equalize_hist, 
+        featurewise_center=featurewise_center, featurewise_mean=featurewise_mean,
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
         sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
         parallelized=parallelized)
@@ -211,10 +223,11 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     nb_roi_val, nb_bkg_val = score_write_patches(
         img_val, ilab_val, img_height, img_scale,
         patch_size, stride, dl_model, batch_size, 
-        preprocess_input, 
         neg_out=os.path.join(val_out, neg_name),
         pos_out=os.path.join(val_out, pos_name),
         bkg_out=os.path.join(val_out, bkg_name),
+        preprocess=preprocess_input, equalize_hist=equalize_hist, 
+        featurewise_center=featurewise_center, featurewise_mean=featurewise_mean,
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
         sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
         parallelized=parallelized)
@@ -225,10 +238,11 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     nb_roi_test, nb_bkg_test = score_write_patches(
         img_test, ilab_test, img_height, img_scale,
         patch_size, stride, dl_model, batch_size, 
-        preprocess_input, 
         neg_out=os.path.join(test_out, neg_name),
         pos_out=os.path.join(test_out, pos_name),
         bkg_out=os.path.join(test_out, bkg_name),
+        preprocess=preprocess_input, equalize_hist=equalize_hist, 
+        featurewise_center=featurewise_center, featurewise_mean=featurewise_mean,
         roi_cutoff=roi_cutoff, bkg_cutoff=bkg_cutoff,
         sample_bkg=sample_bkg, img_ext=out_img_ext, random_seed=random_seed,
         parallelized=parallelized)
@@ -236,8 +250,17 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     sys.stdout.flush()
 
     # ==== Image generators ==== #
-    train_imgen = DMImageDataGenerator()
-    val_imgen = DMImageDataGenerator()
+    if featurewise_center:
+        train_imgen = DMImageDataGenerator(featurewise_center=True)
+        val_imgen = DMImageDataGenerator(featurewise_center=True)
+        test_imgen = DMImageDataGenerator(featurewise_center=True)
+        train_imgen.mean = featurewise_mean
+        val_imgen.mean = featurewise_mean
+        test_imgen.mean = featurewise_mean
+    else:
+        train_imgen = DMImageDataGenerator()
+        val_imgen = DMImageDataGenerator()
+        test_imgen = DMImageDataGenerator()
     if augmentation:
         train_imgen.horizontal_flip=True 
         train_imgen.vertical_flip=True
@@ -245,13 +268,15 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         train_imgen.shear_range = np.pi/8.
 
     # ==== Train & val set ==== #
+    # Note: the images are histogram equalized before they were written to
+    # external folders.
     train_bs = int(batch_size*train_bs_multiplier)
     if load_train_ram:
         raw_imgen = DMImageDataGenerator()
         print "Create generator for raw train set"
         raw_generator = raw_imgen.flow_from_directory(
             train_out, target_size=(patch_size, patch_size), 
-            target_scale=img_scale, dup_3_channels=True,
+            target_scale=img_scale, equalize_hist=False, dup_3_channels=True,
             classes=[bkg_name, pos_name, neg_name], class_mode='categorical', 
             batch_size=train_bs, shuffle=False)
         print "Loading raw train set into RAM.",
@@ -267,7 +292,7 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         print "Create generator for train set"
         train_generator = train_imgen.flow_from_directory(
             train_out, target_size=(patch_size, patch_size), 
-            target_scale=img_scale, dup_3_channels=True,
+            target_scale=img_scale, equalize_hist=False, dup_3_channels=True,
             classes=[bkg_name, pos_name, neg_name], class_mode='categorical', 
             auto_batch_balance=True, batch_size=train_bs, 
             preprocess=preprocess_input, shuffle=True, seed=random_seed)
@@ -276,7 +301,8 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     sys.stdout.flush()
     validation_set = val_imgen.flow_from_directory(
         val_out, target_size=(patch_size, patch_size), target_scale=img_scale,
-        dup_3_channels=True, classes=[bkg_name, pos_name, neg_name], 
+        equalize_hist=False, dup_3_channels=True, 
+        classes=[bkg_name, pos_name, neg_name], 
         class_mode='categorical', batch_size=batch_size, 
         preprocess=preprocess_input, shuffle=False)
     val_samples = validation_set.nb_sample
@@ -287,11 +313,6 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
         print "Loading validation set into RAM.",
         sys.stdout.flush()
         validation_set = load_dat_ram(validation_set, val_samples)
-        # if len(validation_set[0]) != val_samples:
-        #     validation_set = list(validation_set)
-        #     for i in xrange(len(validation_set)):
-        #         validation_set[i] = validation_set[i][:val_samples]
-        #     validation_set = tuple(validation_set)
         print "Done."
         print "Loaded %d val samples" % (len(validation_set[0]))
         sys.stdout.flush()
@@ -323,11 +344,11 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
 
     # ==== Predict on test set ==== #
     print "\n==== Predicting on test set ===="
-    test_imgen = DMImageDataGenerator()
     print "Create generator for test set"
     test_generator = test_imgen.flow_from_directory(
         test_out, target_size=(patch_size, patch_size), target_scale=img_scale,
-        dup_3_channels=True, classes=[bkg_name, pos_name, neg_name], 
+        equalize_hist=False, dup_3_channels=True, 
+        classes=[bkg_name, pos_name, neg_name], 
         class_mode='categorical', batch_size=batch_size, 
         preprocess=preprocess_input, shuffle=False)
     test_samples = test_generator.nb_sample
@@ -336,13 +357,11 @@ def run(img_folder, dl_state, best_model, img_extension='dcm',
     print "Test samples =", test_samples
     print "Load saved best model:", best_model + '.',
     sys.stdout.flush()
-    # import pdb; pdb.set_trace()
     org_model.load_weights(best_model)
-    # saved_model = load_model(best_model)
     print "Done."
     test_res = dl_model.evaluate_generator(
         test_generator, test_samples, nb_worker=nb_worker, 
-        pickle_safe=True)
+        pickle_safe=True if nb_worker > 1 else False)
     print "Evaluation result on test set:", test_res
 
  
@@ -355,6 +374,13 @@ if __name__ == '__main__':
     parser.add_argument("--img-extension", "-ext", dest="img_extension", type=str, default="dcm")
     parser.add_argument("--img-height", "-ih", dest="img_height", type=int, default=1024)
     parser.add_argument("--img-scale", "-ic", dest="img_scale", type=float, default=255.)
+    parser.add_argument("--equalize-hist", dest="equalize_hist", action="store_true")
+    parser.add_argument("--no-equalize-hist", dest="equalize_hist", action="store_false")
+    parser.set_defaults(equalize_hist=False)
+    parser.add_argument("--featurewise-center", dest="featurewise_center", action="store_true")
+    parser.add_argument("--no-featurewise-center", dest="featurewise_center", action="store_false")
+    parser.set_defaults(featurewise_center=False)
+    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=91.6)
     parser.add_argument("--neg-vs-pos-ratio", dest="neg_vs_pos_ratio", type=float, default=10.)
     parser.add_argument("--no-neg-vs-pos-ratio", dest="neg_vs_pos_ratio", 
                         action="store_const", const=None)
@@ -366,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument("--patch-size", dest="patch_size", type=int, default=256)
     parser.add_argument("--stride", dest="stride", type=int, default=8)
     parser.add_argument("--roi-cutoff", dest="roi_cutoff", type=float, default=.9)
-    parser.add_argument("--bkg-cutoff", dest="bkg_cutoff", type=float, default=.5)
+    parser.add_argument("--bkg-cutoff", dest="bkg_cutoff", nargs=2, type=float, default=[.5, 1.])
     parser.add_argument("--sample-bkg", dest="sample_bkg", action="store_true")
     parser.add_argument("--no-sample-bkg", dest="sample_bkg", action="store_false")
     parser.set_defaults(sample_bkg=True)
@@ -413,6 +439,9 @@ if __name__ == '__main__':
         img_extension=args.img_extension, 
         img_height=args.img_height,
         img_scale=args.img_scale,
+        equalize_hist=args.equalize_hist,
+        featurewise_center=args.featurewise_center,
+        featurewise_mean=args.featurewise_mean,
         neg_vs_pos_ratio=args.neg_vs_pos_ratio,
         test_size=args.test_size,
         val_size=args.val_size,
