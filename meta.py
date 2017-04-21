@@ -630,7 +630,7 @@ class DMMetaManager(object):
 
 
     def get_last_exam_list(self, subj_list=None, meta=False, 
-                           flatten_img_list=False):
+                           flatten_img_list=False, cc_mlo_only=False):
         '''Get the last exam training data list
         Returns:
             A list of the last exams for each subject. Each element is a tuple 
@@ -641,7 +641,8 @@ class DMMetaManager(object):
             exam_list.append(
                 (subj_id, ex_idx, 
                  self.get_info_per_exam(
-                    exam_dat, flatten_img_list=flatten_img_list))
+                    exam_dat, flatten_img_list=flatten_img_list, 
+                    cc_mlo_only=cc_mlo_only))
             )
         return exam_list
 

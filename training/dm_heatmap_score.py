@@ -6,69 +6,18 @@ from numpy.random import RandomState
 # from sklearn.model_selection import train_test_split
 from keras.models import load_model
 from meta import DMMetaManager
-from dm_image import add_img_margins, read_resize_img, sweep_img_patches
+from dm_image import (
+    add_img_margins, 
+    read_resize_img, 
+    sweep_img_patches, 
+    get_prob_heatmap)
 from dm_keras_ext import DMMetrics as dmm
 from dm_multi_gpu import make_parallel
 from dm_preprocess import DMImagePreprocessor as prep
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
-import keras.backend as K
-dim_ordering = K.image_dim_ordering()
 
-
-def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride, 
-                     model, batch_size, 
-                     featurewise_center=False, featurewise_mean=91.6,
-                     preprocess=None, parallelized=False, 
-                     equalize_hist=False):
-    '''Sweep image data with a trained model to produce prob heatmaps
-    '''
-    if img_list is None:
-        return None
-
-    heatmap_list = []
-    for img_fn in img_list:
-        img = read_resize_img(img_fn, target_height=target_height)
-        img,_ = prep.segment_breast(img)
-        img = add_img_margins(img, patch_size/2)
-        patch_dat, nb_row, nb_col = sweep_img_patches(
-            img, patch_size, stride, target_scale=target_scale, 
-            equalize_hist=equalize_hist)
-        # Make even patches if necessary.
-        if parallelized and len(patch_dat) % 2 == 1:
-            last_patch = patch_dat[-1:,:,:]
-            patch_dat = np.append(patch_dat, last_patch, axis=0)
-            appended = True
-        else:
-            appended = False
-        if dim_ordering == 'th':
-            patch_X = np.zeros((patch_dat.shape[0], 3, 
-                                patch_dat.shape[1], 
-                                patch_dat.shape[2]), 
-                                dtype='float32')
-            patch_X[:,0,:,:] = patch_dat
-            patch_X[:,1,:,:] = patch_dat
-            patch_X[:,2,:,:] = patch_dat
-        else:
-            patch_X = np.zeros((patch_dat.shape[0], 
-                                patch_dat.shape[1], 
-                                patch_dat.shape[2], 3), 
-                                dtype='float32')
-            patch_X[:,:,:,0] = patch_dat
-            patch_X[:,:,:,1] = patch_dat
-            patch_X[:,:,:,2] = patch_dat
-        if featurewise_center:
-            patch_X -= featurewise_mean
-        elif preprocess is not None:
-            patch_X = preprocess(patch_X)
-        pred = model.predict(patch_X, batch_size=batch_size)
-        if appended:  # remove the appended prediction.
-            pred = pred[:-1]
-        heatmap = pred.reshape((nb_row, nb_col, pred.shape[1]))
-        heatmap_list.append(heatmap)
-    return heatmap_list 
-        
 
 def run(img_folder, dl_state, img_extension='dcm', 
         img_height=1024, img_scale=255., equalize_hist=False, 
