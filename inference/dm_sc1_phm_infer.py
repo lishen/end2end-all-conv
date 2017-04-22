@@ -19,14 +19,18 @@ def make_pred_case(cc_phms, mlo_phms, feature_name, cutoff_list, clf_list,
         cc_mal_list = []
         mlo_ben_list = []
         mlo_mal_list = []
+        cc_fea_list = []
+        mlo_fea_list = []
         for cc_phm in cc_phms[:nb_phm]:
-            for mlo_phm in mlo_phms[:nb_phm]:
-                cc_fea_list = prob_heatmap_features(cc_phm, cutoff, k)
-                cc_mal_list.append(cc_fea_list[0])
-                cc_ben_list.append(cc_fea_list[1])
-                mlo_fea_list = prob_heatmap_features(mlo_phm, cutoff, k)
-                mlo_mal_list.append(mlo_fea_list[0])
-                mlo_ben_list.append(mlo_fea_list[1])
+            cc_fea_list.append(prob_heatmap_features(cc_phm, cutoff, k))
+        for mlo_phm in mlo_phms[:nb_phm]:
+            mlo_fea_list.append(prob_heatmap_features(mlo_phm, cutoff, k))
+        for cc_fea in cc_fea_list:
+            for mlo_fea in mlo_fea_list:
+                cc_mal_list.append(cc_fea[0])
+                cc_ben_list.append(cc_fea[1])
+                mlo_mal_list.append(mlo_fea[0])
+                mlo_ben_list.append(mlo_fea[1])
         cc_ben = pd.DataFrame.from_records(cc_ben_list)
         cc_mal = pd.DataFrame.from_records(cc_mal_list)
         mlo_ben = pd.DataFrame.from_records(mlo_ben_list)
@@ -170,7 +174,7 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
         print "processed %d/%d exams" % (i+1, len(exam_list))
         sys.stdout.flush()
         ### DEBUG ###
-        # if i >= 1:
+        #if i >= 1:
         #    break
         ### DEBUG ###
     print "Done."
