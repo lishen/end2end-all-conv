@@ -6,6 +6,7 @@ from meta import DMMetaManager
 from dm_image import get_prob_heatmap
 import dm_inference as dminfer
 from dm_region import prob_heatmap_features
+from dm_multi_gpu import make_parallel
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
@@ -65,7 +66,8 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
         validation_mode=False, use_mean=False,
-        out_pred='./output/predictions.tsv'):
+        out_pred='./output/predictions.tsv',
+        progress='./progress.txt'):
     '''Run SC1 inference using prob heatmaps
     '''
     # Read some env variables.
@@ -129,6 +131,10 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
     print "Start inference for exam list"
     sys.stdout.flush()
     for i,e in enumerate(exam_list):
+        ### DEBUG ###
+        #if i >= 3:
+        #    break
+        ### DEBUG ###
         subj = e[0]
         exam_idx = e[1]
         if validation_mode:
@@ -170,13 +176,11 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
         else:
             fout.write("%s\tL\t%f\n" % (str(subj), left_pred))
             fout.write("%s\tR\t%f\n" % (str(subj), right_pred))
-
-        print "processed %d/%d exams" % (i+1, len(exam_list))
-        sys.stdout.flush()
-        ### DEBUG ###
-        #if i >= 1:
-        #    break
-        ### DEBUG ###
+        if validation_mode:
+            print "processed %d/%d exams" % (i+1, len(exam_list))
+            sys.stdout.flush()
+        with open(progress, 'w') as fpro:
+            fpro.write("%f\n" % ( (i + 1.)/len(exam_list)) )
     print "Done."
     fout.close()
 
@@ -212,6 +216,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-use-mean", dest="use_mean", action="store_false")
     parser.set_defaults(use_mean=False)
     parser.add_argument("--out-pred", dest="out_pred", type=str, default="./output/predictions.tsv")
+    parser.add_argument("--progress", dest="progress", type=str, default="./progress.txt")
 
     args = parser.parse_args()
     run_opts = dict(
@@ -229,7 +234,8 @@ if __name__ == '__main__':
         exam_tsv=args.exam_tsv,
         validation_mode=args.validation_mode,
         use_mean=args.use_mean,
-        out_pred=args.out_pred
+        out_pred=args.out_pred,
+        progress=args.progress
     )
     print "\n>>> Inference options: <<<\n", run_opts, "\n"
     run(args.img_folder, args.dl_state, args.clf_info_state, **run_opts)
