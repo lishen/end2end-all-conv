@@ -176,9 +176,8 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
         else:
             fout.write("%s\tL\t%f\n" % (str(subj), left_pred))
             fout.write("%s\tR\t%f\n" % (str(subj), right_pred))
-        if validation_mode:
-            print "processed %d/%d exams" % (i+1, len(exam_list))
-            sys.stdout.flush()
+        print "processed %d/%d exams" % (i+1, len(exam_list))
+        sys.stdout.flush()
         with open(progress, 'w') as fpro:
             fpro.write("%f\n" % ( (i + 1.)/len(exam_list)) )
     print "Done."
