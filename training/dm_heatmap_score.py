@@ -26,7 +26,8 @@ def run(img_folder, dl_state, img_extension='dcm',
         net='vgg19', batch_size=128, patch_size=256, stride=8,
         exam_tsv='./metadata/exams_metadata.tsv',
         img_tsv='./metadata/images_crosswalk.tsv',
-        out='./modelState/prob_heatmap.pkl'):
+        out='./modelState/prob_heatmap.pkl',
+        predicted_subj_file=None, add_subjs=500):
     '''Sweep mammograms with trained DL model to create prob heatmaps
     '''
     # Read some env variables.
@@ -44,10 +45,12 @@ def run(img_folder, dl_state, img_extension='dcm',
     print "Found %d subjests" % (len(subj_list))
     print "cancer patients=%d, normal patients=%d" \
             % ((subj_labs==1).sum(), (subj_labs==0).sum())
-    # subj_train, subj_test, labs_train, labs_test = train_test_split(
-    #     subj_list, subj_labs, test_size=test_size, stratify=subj_labs, 
-    #     random_state=random_seed)
-    if neg_vs_pos_ratio is not None:
+    if predicted_subj_file is not None:
+        predicted_subjs = np.load(predicted_subj_file)
+        subj_list = np.setdiff1d(subj_list, predicted_subjs)
+        subj_list = subj_list[:add_subjs]
+        print "Will predict additional %d subjects" % (len(subj_list))
+    elif neg_vs_pos_ratio is not None:
         subj_list, subj_labs = DMMetaManager.subset_subj_list(
             subj_list, subj_labs, neg_vs_pos_ratio, random_seed)
         subj_labs = np.array(subj_labs)
@@ -176,6 +179,9 @@ if __name__ == '__main__':
                         default="./metadata/images_crosswalk.tsv")
     parser.add_argument("--out", dest="out", type=str, 
                         default="./modelState/prob_heatmap.pkl")
+    parser.add_argument("--predicted-subj-file", dest="predicted_subj_file", type=str, default=None)
+    parser.add_argument("--no-predicted-subj-file", dest="predicted_subj_file", action="store_const", const=None)
+    parser.add_argument("--add-subjs", dest="add_subjs", type=int, default=500)
 
     args = parser.parse_args()
     run_opts = dict(
@@ -193,6 +199,8 @@ if __name__ == '__main__':
         exam_tsv=args.exam_tsv,
         img_tsv=args.img_tsv,
         out=args.out,
+        predicted_subj_file=args.predicted_subj_file,
+        add_subjs=args.add_subjs
     )
     print "\n"
     print "img_folder=%s" % (args.img_folder)
