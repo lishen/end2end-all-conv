@@ -56,4 +56,4 @@ def make_parallel(model, gpu_count):
         def new_save(self_, filepath, overwrite=True):
             model.save(filepath, overwrite)
         new_model.save = funcType(new_save, new_model)
-        return new_model
+        return new_model, model

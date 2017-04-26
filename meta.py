@@ -127,7 +127,7 @@ class DMMetaManager(object):
         return (img, lab)
 
 
-    def get_info_per_exam(self, exam, flatten_img_list=False):
+    def get_info_per_exam(self, exam, flatten_img_list=False, cc_mlo_only=False):
         '''Get training-related info for each exam as a dict
         Args:
             exam (DataFrame): data for an exam.
@@ -170,6 +170,23 @@ class DMMetaManager(object):
         if flatten_img_list:
             for breast in exam_indexed.index.levels[0]:
                 info[breast]['img'] = exam_indexed.loc[breast]['filename'].tolist()
+        elif cc_mlo_only:
+            try:
+                info['L']['CC'] = exam_indexed.loc['L'].loc['CC']['filename'].tolist()
+            except KeyError:
+                info['L']['CC'] = None
+            try:
+                info['R']['CC'] = exam_indexed.loc['R'].loc['CC']['filename'].tolist()
+            except KeyError:
+                info['R']['CC'] = None
+            try:
+                info['L']['MLO'] = exam_indexed.loc['L'].loc['MLO']['filename'].tolist()
+            except KeyError:
+                info['L']['MLO'] = None
+            try:
+                info['R']['MLO'] = exam_indexed.loc['R'].loc['MLO']['filename'].tolist()
+            except KeyError:
+                info['R']['MLO'] = None
         else:
             info['L']['CC'] = None
             info['R']['CC'] = None
@@ -380,7 +397,7 @@ class DMMetaManager(object):
 
 
     def get_flatten_exam_list(self, subj_list=None, meta=False, 
-                              flatten_img_list=False):
+                              flatten_img_list=False, cc_mlo_only=False):
         '''Get exam-level training data list
         Returns:
             A list of all exams for all subjects. Each element is a tuple of 
@@ -391,7 +408,8 @@ class DMMetaManager(object):
             exam_list.append(
                 (subj_id, ex_idx, 
                  self.get_info_per_exam(
-                    exam_dat, flatten_img_list=flatten_img_list))
+                    exam_dat, flatten_img_list=flatten_img_list, 
+                    cc_mlo_only=cc_mlo_only))
             )
         return exam_list
 
@@ -565,7 +583,7 @@ class DMMetaManager(object):
 
     @staticmethod
     def exam_labs(exam_list):
-        return [ 1 if e[2]['L']['cancer'] or e[2]['R']['cancer'] else 0 
+        return [ 1 if e[2]['L']['cancer']==1 or e[2]['R']['cancer']==1 else 0 
                  for e in exam_list ]
 
     @staticmethod
@@ -612,7 +630,7 @@ class DMMetaManager(object):
 
 
     def get_last_exam_list(self, subj_list=None, meta=False, 
-                           flatten_img_list=False):
+                           flatten_img_list=False, cc_mlo_only=False):
         '''Get the last exam training data list
         Returns:
             A list of the last exams for each subject. Each element is a tuple 
@@ -623,12 +641,65 @@ class DMMetaManager(object):
             exam_list.append(
                 (subj_id, ex_idx, 
                  self.get_info_per_exam(
-                    exam_dat, flatten_img_list=flatten_img_list))
+                    exam_dat, flatten_img_list=flatten_img_list, 
+                    cc_mlo_only=cc_mlo_only))
             )
         return exam_list
 
 
+    @staticmethod
+    def subset_img_labs(img_list, lab_list, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        img_list = np.array(img_list)
+        lab_list = np.array(lab_list)
+        pos_idx = np.where(lab_list==1)[0]
+        neg_idx = np.where(lab_list==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            img_list = img_list[all_idx].tolist()
+            lab_list = lab_list[all_idx].tolist()
+            return img_list, lab_list
+        else:
+            return img_list.tolist(), lab_list.tolist()
 
+
+    @staticmethod
+    def subset_exam_list(exam_list, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        exam_labs = np.array(DMMetaManager.exam_labs(exam_list))
+        pos_idx = np.where(exam_labs==1)[0]
+        neg_idx = np.where(exam_labs==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            sample_mask = np.zeros(len(exam_list), dtype='bool')
+            sample_mask[all_idx] = True
+            sampled_exam_list = [ exam for i,exam in enumerate(exam_list) 
+                                  if sample_mask[i]]
+            return sampled_exam_list
+        else:
+            return exam_list
+
+
+    @staticmethod
+    def subset_subj_list(subj_list, subj_labs, neg_vs_pos_ratio, seed=12345):
+        rng = np.random.RandomState(seed)
+        subj_list = np.array(subj_list)
+        subj_labs = np.array(subj_labs)
+        pos_idx = np.where(subj_labs==1)[0]
+        neg_idx = np.where(subj_labs==0)[0]
+        nb_neg_desired = int(len(pos_idx)*neg_vs_pos_ratio)
+        if nb_neg_desired < len(neg_idx):
+            sampled_neg_idx = rng.choice(neg_idx, nb_neg_desired, replace=False)
+            all_idx = np.concatenate([pos_idx, sampled_neg_idx])
+            subj_list = subj_list[all_idx].tolist()
+            subj_labs = subj_labs[all_idx].tolist()
+            return subj_list, subj_labs
+        else:
+            return subj_list.tolist(), subj_labs.tolist()
 
 
 
