@@ -6,9 +6,10 @@ EXAM_TSV="/metadata/exams_metadata.tsv"
 IMG_FOLDER="/trainingData"
 IMG_EXT="dcm"
 # resnet50_candidROI_mulcls_bestAuc_model2.h5  resnet50_candidROI_mulcls_final_model2.h5
-DL_STATE="/resnet50_candidROI_mulcls_final_model2.h5"
-TRAIN_OUT="/modelState/meta_prob_train_mc2_final.pkl"
-TEST_OUT="/modelState/meta_prob_test_mc2_final.pkl"
+# DL_STATE="/resnet50_candidROI_mulcls_final_model2.h5"
+DL_STATE="resnet50_candidROI_ONE_bestAuc_model2.h5"
+TRAIN_OUT="/modelState/meta_prob_train_ONE2_best.pkl"
+TEST_OUT="/modelState/meta_prob_test_ONE2_best.pkl"
 
 echo -n "Start training: " && date
 echo

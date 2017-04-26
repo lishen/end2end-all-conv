@@ -4,8 +4,8 @@ export PYTHONPATH=/:$PYTHONPATH
 IMG_CW_TSV="/metadata/images_crosswalk.tsv"
 IMG_FOLDER="/inferenceData"
 IMG_EXT="dcm"
-DL_STATE="/3cls_best_model4_finetuned.h5"
-CLF_INFO_STATE="/model4_ftu_clf_info.pkl"
+DL_STATE="/3cls_best_model5_finetuned.h5"
+CLF_INFO_STATE="/model5_ftu_clf_info.pkl"
 OUT="/output/predictions.tsv"
 PROGRESS="/progress.txt"
 
@@ -26,7 +26,7 @@ python dm_sc1_phm_infer.py \
     --no-exam-tsv \
     --img-tsv $IMG_CW_TSV \
     --no-validation-mode \
-    --no-use-mean \
+    --use-mean \
     --out-pred $OUT \
     --progress $PROGRESS \
     $IMG_FOLDER $DL_STATE $CLF_INFO_STATE

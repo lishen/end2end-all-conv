@@ -5,8 +5,8 @@ IMG_CW_TSV="/metadata/images_crosswalk.tsv"
 EXAM_TSV="/metadata/exams_metadata.tsv"
 IMG_FOLDER="trainingData"
 IMG_EXT="dcm"
-DL_STATE="/3cls_best_model5.h5"
-BEST_MODEL="/modelState/3cls_best_model5_finetuned.h5"
+DL_STATE="/3cls_best_model6.h5"
+BEST_MODEL="/modelState/3cls_best_model6_finetuned.h5"
 TRAIN_OUT="/scratch/train"
 VAL_OUT="/scratch/val"
 TEST_OUT="/scratch/test"
@@ -14,7 +14,7 @@ OUT_EXT="png"
 NEG_NAME="benign"
 POS_NAME="malignant"
 BKG_NAME="background"
-OUT="/modelState/3cls_best_model5_subjs.pkl"
+OUT="/modelState/3cls_best_model6_subjs.pkl"
 
 echo -n "Start training: " && date
 echo
@@ -34,10 +34,10 @@ python dm_patchClf_finetune.py \
     --test-size 0.15 \
     --val-size 0.1 \
     --net resnet50 \
-    --batch-size 256 \
+    --batch-size 200 \
     --train-bs-multiplier 0.5 \
     --patch-size 256 \
-    --stride 128 \
+    --stride 256 \
     --roi-cutoff 0.9 \
     --bkg-cutoff 0.5 0.9 \
     --sample-bkg \
@@ -52,9 +52,9 @@ python dm_patchClf_finetune.py \
     --load-train-ram \
     --load-val-ram \
     --no-top-layer-nb \
-    --nb-epoch 1 \
-    --top-layer-epochs 5 \
-    --all-layer-epochs 15 \
+    --nb-epoch 0 \
+    --top-layer-epochs 3 \
+    --all-layer-epochs 10 \
     --optim nadam \
     --init-lr 0.01 \
     --top-layer-multiplier 0.01 \
