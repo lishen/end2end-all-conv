@@ -9,7 +9,7 @@ DL_STATE="/3cls_best_model5_finetuned.h5"
 CLF_INFO_STATE="/model5_ftu_clf_info.pkl"
 META_CLF_STATE="/model5_ftu_based_meta_clf.pkl"
 OUT="/output/predictions.tsv"
-PROGRESS="/output/progress.txt"
+PROGRESS="/progress.txt"
 
 echo -n "Start training: " && date
 echo
