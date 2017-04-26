@@ -173,9 +173,11 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
                        (str(subj), str(exam_idx), left_pred, left_cancer))
             fout.write("%s\t%s\tR\t%f\t%f\n" % \
                        (str(subj), str(exam_idx), right_pred, right_cancer))
+            fout.flush()
         else:
             fout.write("%s\tL\t%f\n" % (str(subj), left_pred))
             fout.write("%s\tR\t%f\n" % (str(subj), right_pred))
+            fout.flush()
         print "processed %d/%d exams" % (i+1, len(exam_list))
         sys.stdout.flush()
         with open(progress, 'w') as fpro:
