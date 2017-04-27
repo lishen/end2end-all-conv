@@ -165,9 +165,17 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
                      preprocess=None, parallelized=False, 
                      equalize_hist=False):
     '''Sweep image data with a trained model to produce prob heatmaps
+    Args:
+        img_list (str or list of str): can be either an image file name or a 
+            list of image file names.
     '''
     if img_list is None:
         return [None]
+    elif isinstance(img_list, str):
+        img_list = [img_list]
+        is_single = True
+    else:
+        is_single = False
 
     heatmap_list = []
     for img_fn in img_list:
@@ -209,6 +217,8 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
             pred = pred[:-1]
         heatmap = pred.reshape((nb_row, nb_col, pred.shape[1]))
         heatmap_list.append(heatmap)
+    if is_single:
+        return heatmap_list[0]
     return heatmap_list 
 
 
