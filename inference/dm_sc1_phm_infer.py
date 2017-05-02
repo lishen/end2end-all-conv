@@ -85,7 +85,7 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
     sys.stdout.flush()
     for i,e in enumerate(exam_list):
         ### DEBUG ###
-        #if i >= 3:
+        # if i >= 3:
         #    break
         ### DEBUG ###
         subj = e[0]
@@ -115,12 +115,24 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
             dl_model, batch_size, featurewise_center=featurewise_center, 
             featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
             parallelized=parallelized, equalize_hist=equalize_hist)
-        left_pred = dminfer.make_pred_case(
-            left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
-            k=k, nb_phm=nb_phm, use_mean=use_mean)
-        right_pred = dminfer.make_pred_case(
-            right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
-            k=k, nb_phm=nb_phm, use_mean=use_mean)
+        try:
+            left_pred = dminfer.make_pred_case(
+                left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
+                k=k, nb_phm=nb_phm, use_mean=use_mean)
+        except:
+            print "Exception in predicting left breast" + \
+                  " for subj:", subj, "exam:", exam_idx
+            sys.stdout.flush()
+            left_pred = 0.
+        try:
+            right_pred = dminfer.make_pred_case(
+                right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
+                k=k, nb_phm=nb_phm, use_mean=use_mean)
+        except:
+            print "Exception in predicting right breast" + \
+                  " for subj:", subj, "exam:", exam_idx
+            sys.stdout.flush()
+            right_pred = 0.
         if validation_mode:
             fout.write("%s\t%s\tL\t%f\t%f\n" % \
                        (str(subj), str(exam_idx), left_pred, left_cancer))
