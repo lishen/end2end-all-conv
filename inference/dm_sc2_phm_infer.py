@@ -159,12 +159,18 @@ def run(img_folder, dl_state, clf_info_state, meta_clf_state,
             featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
             parallelized=parallelized, equalize_hist=equalize_hist)
         #import pdb; pdb.set_trace()
-        curr_left_pred = dminfer.make_pred_case(
-            left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
-            k=k, nb_phm=nb_phm, use_mean=use_mean)
-        curr_right_pred = dminfer.make_pred_case(
-            right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
-            k=k, nb_phm=nb_phm, use_mean=use_mean)
+        try:
+            curr_left_pred = dminfer.make_pred_case(
+                left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
+                k=k, nb_phm=nb_phm, use_mean=use_mean)
+        except:
+            curr_left_pred = 0.
+        try:
+            curr_right_pred = dminfer.make_pred_case(
+                right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
+                k=k, nb_phm=nb_phm, use_mean=use_mean)
+        except:
+            curr_right_pred = 0.
 
         if prior_idx is not None:
             # prior_left_score = dminfer.pred_2view_img_list(
@@ -191,12 +197,18 @@ def run(img_folder, dl_state, clf_info_state, meta_clf_state,
                 dl_model, batch_size, featurewise_center=featurewise_center, 
                 featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
                 parallelized=parallelized, equalize_hist=equalize_hist)
-            prior_left_pred = dminfer.make_pred_case(
-                left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
-                k=k, nb_phm=nb_phm, use_mean=use_mean)
-            prior_right_pred = dminfer.make_pred_case(
-                right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
-                k=k, nb_phm=nb_phm, use_mean=use_mean)
+            try:
+                prior_left_pred = dminfer.make_pred_case(
+                    left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
+                    k=k, nb_phm=nb_phm, use_mean=use_mean)
+            except:
+                prior_left_pred = 0.
+            try:
+                prior_right_pred = dminfer.make_pred_case(
+                    right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
+                    k=k, nb_phm=nb_phm, use_mean=use_mean)
+            except:
+                prior_right_pred = 0.
             diff_left_pred = (curr_left_pred - prior_left_pred)/nb_days*365
             diff_right_pred = (curr_right_pred - prior_right_pred)/nb_days*365
         else:
