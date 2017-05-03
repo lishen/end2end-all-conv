@@ -36,29 +36,6 @@ def run(img_folder, dl_state, clf_info_state, meta_clf_state,
         img_extension='dcm')
     last2_exgen = meta_man.last_2_exam_generator()
     last2_exam_list = list(last2_exgen)
-    # if do_featurewise_norm:
-    #     img_gen = DMImageDataGenerator(featurewise_center=True, 
-    #                                    featurewise_std_normalization=True)
-    #     img_gen.mean = featurewise_mean
-    #     img_gen.std = featurewise_std
-    # else:
-    #     img_gen = DMImageDataGenerator(samplewise_center=True, 
-    #                                    samplewise_std_normalization=True)
-    # if validation_mode:
-    #     class_mode = 'binary'
-    # else:
-    #     class_mode = None
-
-    # # Image prediction model.
-    # if enet_state is not None:
-    #     model = MultiViewDLElasticNet(*enet_state)
-    # elif dl_state is not None:
-    #     model = load_model(dl_state)
-    # else:
-    #     raise Exception('At least one image model state must be specified.')
-
-    # # XGB model.
-    # xgb_clf = pickle.load(open(xgb_state))
 
     # Load DL model and classifiers.
     print "Load patch classifier:", dl_state; sys.stdout.flush()
@@ -122,115 +99,127 @@ def run(img_folder, dl_state, clf_info_state, meta_clf_state,
             left_cancer = 0 if np.isnan(left_cancer) else left_cancer
             right_cancer = 0 if np.isnan(right_cancer) else right_cancer
 
-        # datgen_exam = img_gen.flow_from_exam_list(
-        #     exam_list, target_size=(img_size[0], img_size[1]), 
-        #     class_mode=class_mode, prediction_mode=True, 
-        #     batch_size=len(exam_list), verbose=False)
-        # ebat = next(datgen_exam)
-        # if class_mode is not None:
-        #     bat_x = ebat[0]
-        #     bat_y = ebat[1]
-        # else:
-        #     bat_x = ebat
-        # cc_batch = bat_x[2]
-        # mlo_batch = bat_x[3]
-        # curr_left_score = dminfer.pred_2view_img_list(
-        #     cc_batch[0], mlo_batch[0], model, use_mean)
-        # curr_right_score = dminfer.pred_2view_img_list(
-        #     cc_batch[1], mlo_batch[1], model, use_mean)
-        left_cc_phms = get_prob_heatmap(
-            current_exam['L']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        left_mlo_phms = get_prob_heatmap(
-            current_exam['L']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        right_cc_phms = get_prob_heatmap(
-            current_exam['R']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        right_mlo_phms = get_prob_heatmap(
-            current_exam['R']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
+        # Get prob heatmaps.
+        try:
+            left_cc_phms = get_prob_heatmap(
+                current_exam['L']['CC'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            left_cc_phms = [None]
+        try:
+            left_mlo_phms = get_prob_heatmap(
+                current_exam['L']['MLO'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            left_mlo_phms = [None]
+        try:
+            right_cc_phms = get_prob_heatmap(
+                current_exam['R']['CC'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            right_cc_phms = [None]
+        try:
+            right_mlo_phms = get_prob_heatmap(
+                current_exam['R']['MLO'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            right_mlo_phms = [None]
         #import pdb; pdb.set_trace()
         try:
             curr_left_pred = dminfer.make_pred_case(
                 left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
                 k=k, nb_phm=nb_phm, use_mean=use_mean)
         except:
-            curr_left_pred = 0.
+            curr_left_pred = np.nan
         try:
             curr_right_pred = dminfer.make_pred_case(
                 right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
                 k=k, nb_phm=nb_phm, use_mean=use_mean)
         except:
-            curr_right_pred = 0.
+            curr_right_pred = np.nan
 
         if prior_idx is not None:
-            # prior_left_score = dminfer.pred_2view_img_list(
-            #     cc_batch[2], mlo_batch[2], model, use_mean)
-            # prior_right_score = dminfer.pred_2view_img_list(
-            #     cc_batch[3], mlo_batch[3], model, use_mean)
-            left_cc_phms = get_prob_heatmap(
-                prior_exam['L']['CC'], img_height, img_scale, patch_size, stride, 
-                dl_model, batch_size, featurewise_center=featurewise_center, 
-                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-                parallelized=parallelized, equalize_hist=equalize_hist)
-            left_mlo_phms = get_prob_heatmap(
-                prior_exam['L']['MLO'], img_height, img_scale, patch_size, stride, 
-                dl_model, batch_size, featurewise_center=featurewise_center, 
-                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-                parallelized=parallelized, equalize_hist=equalize_hist)
-            right_cc_phms = get_prob_heatmap(
-                prior_exam['R']['CC'], img_height, img_scale, patch_size, stride, 
-                dl_model, batch_size, featurewise_center=featurewise_center, 
-                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-                parallelized=parallelized, equalize_hist=equalize_hist)
-            right_mlo_phms = get_prob_heatmap(
-                prior_exam['R']['MLO'], img_height, img_scale, patch_size, stride, 
-                dl_model, batch_size, featurewise_center=featurewise_center, 
-                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-                parallelized=parallelized, equalize_hist=equalize_hist)
+            try:
+                left_cc_phms = get_prob_heatmap(
+                    prior_exam['L']['CC'], img_height, img_scale, patch_size, stride, 
+                    dl_model, batch_size, featurewise_center=featurewise_center, 
+                    featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                    parallelized=parallelized, equalize_hist=equalize_hist)
+            except:
+                left_cc_phms = [None]
+            try:
+                left_mlo_phms = get_prob_heatmap(
+                    prior_exam['L']['MLO'], img_height, img_scale, patch_size, stride, 
+                    dl_model, batch_size, featurewise_center=featurewise_center, 
+                    featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                    parallelized=parallelized, equalize_hist=equalize_hist)
+            except:
+                left_mlo_phms = [None]
+            try:
+                right_cc_phms = get_prob_heatmap(
+                    prior_exam['R']['CC'], img_height, img_scale, patch_size, stride, 
+                    dl_model, batch_size, featurewise_center=featurewise_center, 
+                    featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                    parallelized=parallelized, equalize_hist=equalize_hist)
+            except:
+                right_cc_phms = [None]
+            try:
+                right_mlo_phms = get_prob_heatmap(
+                    prior_exam['R']['MLO'], img_height, img_scale, patch_size, stride, 
+                    dl_model, batch_size, featurewise_center=featurewise_center, 
+                    featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                    parallelized=parallelized, equalize_hist=equalize_hist)
+            except:
+                right_mlo_phms = [None]
             try:
                 prior_left_pred = dminfer.make_pred_case(
                     left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
                     k=k, nb_phm=nb_phm, use_mean=use_mean)
             except:
-                prior_left_pred = 0.
+                prior_left_pred = np.nan
             try:
                 prior_right_pred = dminfer.make_pred_case(
                     right_cc_phms, right_mlo_phms, feature_name, cutoff_list, clf_list,
                     k=k, nb_phm=nb_phm, use_mean=use_mean)
             except:
-                prior_right_pred = 0.
-            diff_left_pred = (curr_left_pred - prior_left_pred)/nb_days*365
-            diff_right_pred = (curr_right_pred - prior_right_pred)/nb_days*365
+                prior_right_pred = np.nan
+            try:
+                diff_left_pred = (curr_left_pred - prior_left_pred)/nb_days*365
+            except:
+                diff_left_pred = np.nan
+            try:
+                diff_right_pred = (curr_right_pred - prior_right_pred)/nb_days*365
+            except:
+                diff_right_pred = np.nan
         else:
             prior_left_pred = np.nan
             prior_right_pred = np.nan
             diff_left_pred = np.nan
             diff_right_pred = np.nan
 
-        # Merge image scores into meta info.
-        left_record = left_record\
-                .assign(curr_score=curr_left_pred)\
-                .assign(prior_score=prior_left_pred)\
-                .assign(diff_score=diff_left_pred)
-        right_record = right_record\
-                .assign(curr_score=curr_right_pred)\
-                .assign(prior_score=prior_right_pred)\
-                .assign(diff_score=diff_right_pred)
-        #import pdb; pdb.set_trace()
-        dsubj = pd.concat([left_record, right_record], ignore_index=True)
-
-        # Predict using meta classifier.
-        pred = meta_model.predict_proba(dsubj)[:,1]
+        try:
+            # Merge image scores into meta info.
+            left_record = left_record\
+                    .assign(curr_score=curr_left_pred)\
+                    .assign(prior_score=prior_left_pred)\
+                    .assign(diff_score=diff_left_pred)
+            right_record = right_record\
+                    .assign(curr_score=curr_right_pred)\
+                    .assign(prior_score=prior_right_pred)\
+                    .assign(diff_score=diff_right_pred)
+            dsubj = pd.concat([left_record, right_record], ignore_index=True)
+            # Predict using meta classifier.
+            pred = meta_model.predict_proba(dsubj)[:,1]
+        except:
+            pred = [0., 0.]
 
         # Output.
         if validation_mode:

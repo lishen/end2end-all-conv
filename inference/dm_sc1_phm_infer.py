@@ -95,26 +95,38 @@ def run(img_folder, dl_state, clf_info_state, img_extension='dcm',
             right_cancer = e[2]['R']['cancer']
             left_cancer = 0 if np.isnan(left_cancer) else left_cancer
             right_cancer = 0 if np.isnan(right_cancer) else right_cancer
-        left_cc_phms = get_prob_heatmap(
-            e[2]['L']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        left_mlo_phms = get_prob_heatmap(
-            e[2]['L']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        right_cc_phms = get_prob_heatmap(
-            e[2]['R']['CC'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
-        right_mlo_phms = get_prob_heatmap(
-            e[2]['R']['MLO'], img_height, img_scale, patch_size, stride, 
-            dl_model, batch_size, featurewise_center=featurewise_center, 
-            featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
-            parallelized=parallelized, equalize_hist=equalize_hist)
+        try:
+            left_cc_phms = get_prob_heatmap(
+                e[2]['L']['CC'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            left_cc_phms = [None]
+        try:
+            left_mlo_phms = get_prob_heatmap(
+                e[2]['L']['MLO'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            left_mlo_phms = [None]
+        try:
+            right_cc_phms = get_prob_heatmap(
+                e[2]['R']['CC'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            right_cc_phms = [None]
+        try:
+            right_mlo_phms = get_prob_heatmap(
+                e[2]['R']['MLO'], img_height, img_scale, patch_size, stride, 
+                dl_model, batch_size, featurewise_center=featurewise_center, 
+                featurewise_mean=featurewise_mean, preprocess=preprocess_input, 
+                parallelized=parallelized, equalize_hist=equalize_hist)
+        except:
+            right_mlo_phms = [None]
         try:
             left_pred = dminfer.make_pred_case(
                 left_cc_phms, left_mlo_phms, feature_name, cutoff_list, clf_list,
