@@ -53,7 +53,10 @@ def make_pred_case(cc_phms, mlo_phms, feature_name, cutoff_list, clf_list,
         mlo_ben.columns = 'mlo_ben_' + mlo_ben.columns
         mlo_mal.columns = 'mlo_mal_' + mlo_mal.columns
         fea_df = pd.concat([cc_ben, cc_mal, mlo_ben, mlo_mal], axis=1)
-        fea_df_list.append(fea_df[feature_name])
+        try:
+            fea_df_list.append(fea_df[feature_name])
+        except KeyError:
+            fea_df_list.append(fea_df)
     all_fea_df = pd.concat(fea_df_list, axis=1)
     # import pdb; pdb.set_trace()
     if len(clf_list) == 1:
