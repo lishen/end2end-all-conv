@@ -17,13 +17,6 @@ from dm_multi_gpu import make_parallel
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
-import keras.backend as K
-dim_ordering = K.image_dim_ordering()
-# if K.backend() == 'tensorflow':
-#     import tensorflow as tf
-#     config = tf.ConfigProto()
-#     config.gpu_options.per_process_gpu_memory_fraction = 0.7
-
 
 
 def run(train_dir, val_dir, test_dir,
@@ -55,47 +48,17 @@ def run(train_dir, val_dir, test_dir,
     gpu_count = int(os.getenv('NUM_GPU_DEVICES', 1))
 
     # ========= Image generator ============== #
-    # if use_pretrained:  # use pretrained model's preprocessing.
-    #     train_imgen = DMImageDataGenerator()
-    #     val_imgen = DMImageDataGenerator()
     if featurewise_center:
-        # fitgen = DMImageDataGenerator()
-        # # Calculate pixel-level mean and std.
-        # print "Create generator for mean and std fitting"
-        # fit_patch_generator = fitgen.flow_from_directory(
-        #     train_dir, target_size=img_size, target_scale=img_scale,
-        #     classes=class_list, class_mode=None, batch_size=batch_size,
-        #     shuffle=True, seed=random_seed)
-        # sys.stdout.flush()
-        # fit_X_lst = []
-        # patches_seen = 0
-        # while patches_seen < fit_size:
-        #     X = fit_patch_generator.next()
-        #     fit_X_lst.append(X)
-        #     patches_seen += len(X)
-        # fit_X_arr = np.concatenate(fit_X_lst)
         train_imgen = DMImageDataGenerator(featurewise_center=True)
-            # featurewise_std_normalization=True)
         val_imgen = DMImageDataGenerator(featurewise_center=True)
         test_imgen = DMImageDataGenerator(featurewise_center=True)
-            # featurewise_std_normalization=True)
-        # train_imgen.fit(fit_X_arr)
-        # print "Found mean=%.2f, std=%.2f" % (train_imgen.mean, train_imgen.std)
-        # sys.stdout.flush()
         train_imgen.mean = featurewise_mean
         val_imgen.mean = featurewise_mean
         test_imgen.mean = featurewise_mean
-        # del fit_X_arr, fit_X_lst
     else:
         train_imgen = DMImageDataGenerator()
         val_imgen = DMImageDataGenerator()
         test_imgen = DMImageDataGenerator()
-        # train_imgen = DMImageDataGenerator(
-        #     samplewise_center=True,
-        #     samplewise_std_normalization=True)
-        # val_imgen = DMImageDataGenerator(
-        #     samplewise_center=True,
-        #     samplewise_std_normalization=True)
 
     # Add augmentation options.
     if augmentation:
@@ -193,16 +156,17 @@ def run(train_dir, val_dir, test_dir,
     #### DEBUG ####
     # samples_per_epoch = train_bs*10
     #### DEBUG ####
-    if isinstance(validation_set, list):
+    if isinstance(validation_set, tuple):
         val_samples = len(validation_set[0])
     else:
         val_samples = validation_set.nb_sample
+    validation_steps = int(val_samples/batch_size)
     #### DEBUG ####
     # val_samples = 100
     #### DEBUG ####
     model, loss_hist, acc_hist = do_3stage_training(
-        model, org_model, train_generator, validation_set, val_samples, 
-        best_model, samples_per_epoch, top_layer_nb, net, nb_epoch=nb_epoch,
+        model, org_model, train_generator, validation_set, validation_steps, 
+        best_model, train_batches, top_layer_nb, net, nb_epoch=nb_epoch,
         top_layer_epochs=top_layer_epochs, all_layer_epochs=all_layer_epochs,
         use_pretrained=use_pretrained, optim=optim, init_lr=init_lr, 
         top_layer_multiplier=top_layer_multiplier, 
@@ -237,12 +201,12 @@ def run(train_dir, val_dir, test_dir,
     sys.stdout.flush()
     org_model.load_weights(best_model)
     print "Done."
-    test_samples = test_generator.nb_sample
+    test_steps = int(test_generator.nb_sample/batch_size)
     #### DEBUG ####
     # test_samples = 10
     #### DEBUG ####
     test_res = model.evaluate_generator(
-        test_generator, test_samples, nb_worker=nb_worker, 
+        test_generator, test_steps, nb_worker=nb_worker, 
         pickle_safe=True if nb_worker > 1 else False)
     print "Evaluation result on test set:", test_res
 

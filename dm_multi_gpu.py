@@ -1,5 +1,5 @@
 # Originally from: https://github.com/kuza55/keras-extras/blob/master/utils/multi_gpu.py
-from keras.layers import merge
+from keras.layers.merge import concatenate
 from keras.layers.core import Lambda
 from keras.models import Model
 import tensorflow as tf
@@ -44,13 +44,11 @@ def make_parallel(model, gpu_count):
         merged = []
         for outputs in outputs_all:
             if gpu_count > 1:
-                merged.append(merge(outputs, mode='concat', concat_axis=0))
+                merged.append(concatenate(outputs, axis=0))
             else:
                 merged.append(outputs[0])
             
-        # return Model(input=model.inputs, output=merged)
-        
-        new_model = Model(input=model.inputs, output=merged)
+        new_model = Model(inputs=model.inputs, outputs=merged)
         funcType = type(model.save)
         # monkeypatch the save to save just the underlying model
         def new_save(self_, filepath, overwrite=True):

@@ -14,7 +14,7 @@ from keras.callbacks import (
     ModelCheckpoint
 )
 import keras.backend as K
-dim_ordering = K.image_dim_ordering()
+data_format = K.image_data_format()
 from sklearn.metrics import roc_auc_score
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
@@ -57,7 +57,7 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
         kw_args: keyword arguments for creating resnet.
     '''
     if use_pretrained:
-        if dim_ordering == "tf":
+        if data_format == "channels_last":
             input_shape = tuple(img_size) + (3,)
         else:
             input_shape = (3,) + tuple(img_size)
@@ -105,8 +105,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
             if hidden_dropout > 0.:
                 x = Dropout(hidden_dropout)(x)
             preds = Dense(nb_class, activation='softmax', 
-                          W_regularizer=l2(weight_decay), 
-                          b_regularizer=l2(weight_decay*bias_multiplier))(x)
+                          kernel_regularizer=l2(weight_decay), 
+                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
             model = Model(input=base_model.input, output=preds)
             print "Done."
         else:
@@ -125,8 +125,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
             if hidden_dropout > 0.:
                 x = Dropout(hidden_dropout)(x)
             preds = Dense(nb_class, activation='softmax', 
-                          W_regularizer=l2(weight_decay), 
-                          b_regularizer=l2(weight_decay*bias_multiplier))(x)
+                          kernel_regularizer=l2(weight_decay), 
+                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
             model = Model(input=base_model.input, output=preds)
             print "Done."
     elif net == 'vgg19':
@@ -140,8 +140,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
             if hidden_dropout > 0.:
                 x = Dropout(hidden_dropout)(x)
             preds = Dense(nb_class, activation='softmax', 
-                          W_regularizer=l2(weight_decay), 
-                          b_regularizer=l2(weight_decay*bias_multiplier))(x)
+                          kernel_regularizer=l2(weight_decay), 
+                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
             model = Model(input=base_model.input, output=preds)
             print "Done."
         else:
@@ -158,8 +158,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
             if hidden_dropout > 0.:
                 x = Dropout(hidden_dropout)(x)
             preds = Dense(nb_class, activation='softmax', 
-                          W_regularizer=l2(weight_decay), 
-                          b_regularizer=l2(weight_decay*bias_multiplier))(x)
+                          kernel_regularizer=l2(weight_decay), 
+                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
             model = Model(input=base_model.input, output=preds)
             print "Done."
         else:
@@ -176,8 +176,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
             if hidden_dropout > 0.:
                 x = Dropout(hidden_dropout)(x)
             preds = Dense(nb_class, activation='softmax', 
-                          W_regularizer=l2(weight_decay), 
-                          b_regularizer=l2(weight_decay*bias_multiplier))(x)
+                          kernel_regularizer=l2(weight_decay), 
+                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
             model = Model(input=base_model.input, output=preds)
             print "Done."
         else:
@@ -208,7 +208,7 @@ def create_optimizer(optim_name, lr):
 
 
 def do_3stage_training(model, org_model, train_generator, validation_set, 
-                       val_samples, best_model_out, samples_per_epoch, 
+                       validation_steps, best_model_out, steps_per_epoch, 
                        top_layer_nb=None, net=None,
                        nb_epoch=10, top_layer_epochs=0, all_layer_epochs=0,
                        use_pretrained=True, optim='sgd', init_lr=.01, 
@@ -256,11 +256,11 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
                   loss='categorical_crossentropy', metrics=['accuracy'])
     hist = model.fit_generator(
         train_generator, 
-        samples_per_epoch=samples_per_epoch, 
-        nb_epoch=nb_epoch,
+        steps_per_epoch=steps_per_epoch, 
+        epochs=nb_epoch,
         class_weight=class_weight,
         validation_data=validation_set,
-        nb_val_samples=val_samples,
+        validation_steps=validation_steps,
         callbacks=callbacks, 
         nb_worker=nb_worker, 
         pickle_safe=pickle_safe,
@@ -282,19 +282,19 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         if net == 'xception' or net == 'inception' or net == 'resnet50':
             dense_layer = org_model.layers[-1]
             dropout_layer = org_model.layers[-2]
-            dense_layer.W_regularizer.l2 = weight_decay2
-            dense_layer.b_regularizer.l2 = weight_decay2*bias_multiplier
-            dropout_layer.p = hidden_dropout2
+            dense_layer.kernel_regularizer.l2 = weight_decay2
+            dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
+            dropout_layer.rate = hidden_dropout2
         model.compile(optimizer=create_optimizer(optim, init_lr*top_layer_multiplier), 
                       loss='categorical_crossentropy', metrics=['accuracy'])
         print "Start training on the top layers only"; sys.stdout.flush()
         hist = model.fit_generator(
             train_generator, 
-            samples_per_epoch=samples_per_epoch, 
-            nb_epoch=top_layer_epochs,
+            steps_per_epoch=steps_per_epoch, 
+            epochs=top_layer_epochs,
             class_weight=class_weight,
             validation_data=validation_set,
-            nb_val_samples=val_samples,
+            validation_steps=validation_steps,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
             pickle_safe=pickle_safe,
@@ -314,11 +314,11 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         print "Start training on all layers"; sys.stdout.flush()
         hist = model.fit_generator(
             train_generator, 
-            samples_per_epoch=samples_per_epoch, 
-            nb_epoch=all_layer_epochs,
+            steps_per_epoch=steps_per_epoch, 
+            epochs=all_layer_epochs,
             class_weight=class_weight,
             validation_data=validation_set,
-            nb_val_samples=val_samples,
+            validation_steps=validation_steps,
             callbacks=callbacks, 
             nb_worker=nb_worker, 
             pickle_safe=pickle_safe,

@@ -5,23 +5,23 @@ from keras.layers import (
     Input,
     Activation,
     Dropout,
-    merge,
     Dense,
     Flatten
 )
+from keras.layers.merge import concatenate, add
 from keras.layers.convolutional import (
-    Convolution2D,
+    Conv2D,
     MaxPooling2D,
     AveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
-from keras.regularizers import l1, l2, l1l2
+from keras.regularizers import l1, l2, l1_l2
 from keras import backend as K
 # import warnings
 # warnings.filterwarnings('error')
 
 
-if K.image_dim_ordering() == 'tf':
+if K.image_data_format() == 'channels_last':
     ROW_AXIS = 1
     COL_AXIS = 2
     CHANNEL_AXIS = 3
@@ -32,13 +32,13 @@ else:
 
 
 # Helper to build a conv -> BN -> relu block
-def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1), 
+def _conv_bn_relu(nb_filter, nb_row, nb_col, strides=(1, 1), 
                   weight_decay=.0001, dropout=.0):
     def f(input):
-        conv = Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, 
-                             subsample=subsample, init="he_normal", 
-                             border_mode="same", W_regularizer=l2(weight_decay))(input)
-        norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(conv)
+        conv = Conv2D(filters=nb_filter, kernel_size=(nb_row, nb_col), 
+                      strides=strides, kernel_initializer="he_normal", 
+                      padding="same", kernel_regularizer=l2(weight_decay))(input)
+        norm = BatchNormalization(axis=CHANNEL_AXIS)(conv)
         relu = Activation("relu")(norm)
         return Dropout(dropout)(relu)
 
@@ -47,15 +47,16 @@ def _conv_bn_relu(nb_filter, nb_row, nb_col, subsample=(1, 1),
 
 # Helper to build a BN -> relu -> conv block
 # This is an improved scheme proposed in http://arxiv.org/pdf/1603.05027v2.pdf
-def _bn_relu_conv(nb_filter, nb_row, nb_col, subsample=(1, 1), 
+def _bn_relu_conv(nb_filter, nb_row, nb_col, strides=(1, 1), 
                   weight_decay=.0001, dropout=.0):
     def f(input):
-        norm = BatchNormalization(mode=0, axis=CHANNEL_AXIS)(input)
+        norm = BatchNormalization(axis=CHANNEL_AXIS)(input)
         activation = Activation("relu")(norm)
         activation = Dropout(dropout)(activation)
-        return Convolution2D(nb_filter=nb_filter, nb_row=nb_row, nb_col=nb_col, 
-                             subsample=subsample, init="he_normal", border_mode="same", 
-                             W_regularizer=l2(weight_decay))(activation)
+        return Conv2D(filters=nb_filter, kernel_size=(nb_row, nb_col), 
+                      strides=strides, kernel_initializer="he_normal", 
+                      padding="same", 
+                      kernel_regularizer=l2(weight_decay))(activation)
 
     return f
 
@@ -74,24 +75,24 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0):
     shortcut = input
     # 1 X 1 conv if shape is different. Else identity.
     if stride_width > 1 or stride_height > 1 or not equal_channels:
-        shortcut = Convolution2D(nb_filter=residual._keras_shape[CHANNEL_AXIS],
-                                 nb_row=1, nb_col=1,
-                                 subsample=(stride_width, stride_height),
-                                 init="he_normal", border_mode="valid", 
-                                 W_regularizer=l2(weight_decay))(input)
+        shortcut = Conv2D(filters=residual._keras_shape[CHANNEL_AXIS],
+                          kernel_size=(1, 1),
+                          strides=(stride_width, stride_height),
+                          kernel_initializer="he_normal", padding="valid", 
+                          kernel_regularizer=l2(weight_decay))(input)
 
-    return merge([shortcut, residual], mode="sum")
+    return add([shortcut, residual])
 
 
 # Builds a residual block with repeating bottleneck blocks.
 def _residual_block(block_function, nb_filters, repetitions, is_first_layer=False, **kw_args):
     def f(input):
         for i in range(repetitions):
-            init_subsample = (1, 1)
+            init_strides = (1, 1)
             if i == 0 and not is_first_layer:
-                init_subsample = (2, 2)
+                init_strides = (2, 2)
             input = block_function(nb_filters=nb_filters, 
-                                   init_subsample=init_subsample, **kw_args)(input)
+                                   init_strides=init_strides, **kw_args)(input)
         return input
 
     return f
@@ -100,9 +101,9 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
 # Basic 3 X 3 convolution blocks.
 # Use for resnet with layers <= 34
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
-def basic_block(nb_filters, init_subsample=(1, 1), **kw_args):
+def basic_block(nb_filters, init_strides=(1, 1), **kw_args):
     def f(input):
-        conv1 = _bn_relu_conv(nb_filters, 3, 3, subsample=init_subsample, **kw_args)(input)
+        conv1 = _bn_relu_conv(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv1)
         return _shortcut(input, residual, **kw_args)
 
@@ -112,9 +113,9 @@ def basic_block(nb_filters, init_subsample=(1, 1), **kw_args):
 # Bottleneck architecture for > 34 layer resnet.
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
-def bottleneck(nb_filters, init_subsample=(1, 1), **kw_args):
+def bottleneck(nb_filters, init_strides=(1, 1), **kw_args):
     def f(input):
-        conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, subsample=init_subsample, **kw_args)(input)
+        conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
         residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, **kw_args)
@@ -138,7 +139,7 @@ class ResNetBuilder(object):
             raise Exception("Input shape should be a tuple (nb_channels, nb_rows, nb_cols)")
 
         # Permute dimension order if necessary
-        if K.image_dim_ordering() == 'tf':
+        if K.image_data_format() == 'channels_last':
             input_shape = (input_shape[1], input_shape[2], input_shape[0])
 
         input_ = Input(shape=input_shape)
@@ -146,12 +147,12 @@ class ResNetBuilder(object):
         conv1 = _conv_bn_relu(nb_filter=nb_init_filter, 
                               nb_row=init_filter_size, 
                               nb_col=init_filter_size, 
-                              subsample=(init_conv_stride, init_conv_stride), 
+                              strides=(init_conv_stride, init_conv_stride), 
                               weight_decay=weight_decay, dropout=hidden_dropout)(dropped)
         if pool_size:
             pool1 = MaxPooling2D(pool_size=(pool_size, pool_size), 
                                  strides=(pool_stride, pool_stride), 
-                                 border_mode="same")(conv1)
+                                 padding="same")(conv1)
             block = pool1
         else:
             block = conv1
@@ -187,7 +188,7 @@ class ResNetBuilder(object):
         elif l1_ratio == 1.:
             return l1(alpha)
         else:
-            return l1l2(l1_ratio*alpha, 1./2*(1 - l1_ratio)*alpha)
+            return l1_l2(l1_ratio*alpha, 1./2*(1 - l1_ratio)*alpha)
 
     @staticmethod
     def build(input_shape, num_outputs, block_fn, repetitions, nb_init_filter=64,
@@ -209,7 +210,7 @@ class ResNetBuilder(object):
         :return: The keras model.
         """
 
-        input, flatten_out = ResNetBuilder._shared_conv_layers(
+        inputs, flatten_out = ResNetBuilder._shared_conv_layers(
             input_shape, block_fn, repetitions, 
             nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
             init_conv_stride=init_conv_stride, 
@@ -218,9 +219,9 @@ class ResNetBuilder(object):
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
         activation = "softmax" if num_outputs > 1 else "sigmoid"
-        dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation=activation, W_regularizer=enet_penalty)(flatten_out)
-        model = Model(input=input, output=dense)
+        dense = Dense(units=num_outputs, kernel_initializer="he_normal", 
+                      activation=activation, kernel_regularizer=enet_penalty)(flatten_out)
+        model = Model(inputs=inputs, outputs=dense)
         return model
 
 
@@ -404,12 +405,12 @@ class MultiViewResNetBuilder(ResNetBuilder):
             weight_decay=weight_decay, 
             inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
         # Then merge the conv representations of the two views.
-        merged_repr = merge([flatten_cc, flatten_mlo], mode="concat")
+        merged_repr = concatenate([flatten_cc, flatten_mlo])
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
         activation = "softmax" if num_outputs > 1 else "sigmoid"
-        dense = Dense(output_dim=num_outputs, init="he_normal", 
-                      activation=activation, W_regularizer=enet_penalty)(merged_repr)
-        discr_model = Model(input=[input_cc, input_mlo], output=dense)
+        dense = Dense(units=num_outputs, kernel_initializer="he_normal", 
+                      activation=activation, kernel_regularizer=enet_penalty)(merged_repr)
+        discr_model = Model(inputs=[input_cc, input_mlo], outputs=dense)
         return discr_model
 
 
@@ -417,7 +418,7 @@ def main():
     model = MultiViewResNetBuilder.build_resnet_50(
         (1, 288, 224), 1, inp_dropout=.2, hidden_dropout=.5)
     model.compile(loss="binary_crossentropy", optimizer="sgd")
-    model.summary()
+    # model.summary()
 
 
 if __name__ == '__main__':

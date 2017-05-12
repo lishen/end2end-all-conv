@@ -7,15 +7,12 @@ from keras.preprocessing.image import (
     Iterator, 
     # NumpyArrayIterator
 )
-from keras.utils.np_utils import (
-    to_categorical, 
-    categorical_probas_to_classes
-)
+from keras.utils.np_utils import to_categorical 
 import keras.backend as K
 import cv2
 import dicom
 from dm_preprocess import DMImagePreprocessor as prep
-dim_ordering = K.image_dim_ordering()
+data_format = K.image_data_format()
 
 
 def crop_img(img, bbox):
@@ -41,7 +38,14 @@ def to_sparse(y):
     if y.ndim == 1:
         sparse_y = y
     elif y.ndim == 2:
-        sparse_y = categorical_probas_to_classes(y)
+        sparse_y = []
+        for r in y:
+            label = r.nonzero()[0]
+            if len(label) != 1 or r[label[0]] != 1:
+                raise ValueError('Expect one-hot encoding for y. '
+                                 'Got sample:', r)
+            sparse_y.append(label)
+        sparse_y = np.concatenate(sparse_y)
     else:
         raise ValueError('Labels should use either sparse '
                          'or onehot encoding format. Found '
@@ -192,7 +196,7 @@ def get_prob_heatmap(img_list, target_height, target_scale, patch_size, stride,
             appended = True
         else:
             appended = False
-        if dim_ordering == 'th':
+        if data_format == 'channels_first':
             patch_X = np.zeros((patch_dat.shape[0], 3, 
                                 patch_dat.shape[1], 
                                 patch_dat.shape[2]), 
@@ -228,7 +232,7 @@ class DMImgListIterator(Iterator):
 
     def __init__(self, img_list, lab_list, image_data_generator,
                  target_size=(1152, 896), target_scale=4095, gs_255=False, 
-                 dim_ordering='default',
+                 data_format='default',
                  class_mode='binary', validation_mode=False,
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=32, shuffle=True, seed=None,
@@ -242,15 +246,15 @@ class DMImgListIterator(Iterator):
                     the image iterator will generate two times more negatives than 
                     positives. 
         '''
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         self.image_data_generator = image_data_generator
         self.target_size = tuple(target_size)
         self.target_scale = target_scale
         self.gs_255 = gs_255
-        self.dim_ordering = dim_ordering
+        self.data_format = data_format
         # Always gray-scale.
-        if self.dim_ordering == 'tf':
+        if self.data_format == 'channels_last':
             self.image_shape = self.target_size + (1,)
         else:
             self.image_shape = (1,) + self.target_size
@@ -317,7 +321,7 @@ class DMImgListIterator(Iterator):
                     fname, self.target_size, target_scale=self.target_scale, 
                     gs_255=self.gs_255)
                 # Always have one channel.
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     x = img.reshape((1, img.shape[0], img.shape[1]))
                 else:
                     x = img.reshape((img.shape[0], img.shape[1], 1))
@@ -337,7 +341,7 @@ class DMImgListIterator(Iterator):
                     format(prefix=self.save_prefix, index=current_index + i,
                            hash=rng.randint(1e4), format=self.save_format)
                 img = batch_x[i]
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     img = img.reshape((img.shape[1], img.shape[2]))
                 else:
                     img = img.reshape((img.shape[0], img.shape[1]))
@@ -362,21 +366,21 @@ class DMExamListIterator(Iterator):
 
     def __init__(self, exam_list, image_data_generator,
                  target_size=(1152, 896), target_scale=4095, gs_255=False, 
-                 dim_ordering='default',
+                 data_format='default',
                  class_mode='binary', validation_mode=False, prediction_mode=False, 
                  balance_classes=False, all_neg_skip=0.,
                  batch_size=16, shuffle=True, seed=None,
                  save_to_dir=None, save_prefix='', save_format='jpeg', verbose=True):
 
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         self.image_data_generator = image_data_generator
         self.target_size = tuple(target_size)
         self.target_scale = target_scale
         self.gs_255 = gs_255
-        self.dim_ordering = dim_ordering
+        self.data_format = data_format
         # Always gray-scale. Two inputs: CC and MLO.
-        if self.dim_ordering == 'tf':
+        if self.data_format == 'channels_last':
             self.image_shape = self.target_size + (1,)
         else:
             self.image_shape = (1,) + self.target_size
@@ -507,12 +511,12 @@ class DMExamListIterator(Iterator):
             # Reshape each image array in the image lists.
             for i, img_cc_ in enumerate(img_cc):
                 # Always have one channel.
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     img_cc[i] = img_cc_.reshape((1, img_cc_.shape[0], img_cc_.shape[1]))
                 else:
                     img_cc[i] = img_cc_.reshape((img_cc_.shape[0], img_cc_.shape[1], 1))
             for i, img_mlo_ in enumerate(img_mlo):
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     img_mlo[i] = img_mlo_.reshape((1, img_mlo_.shape[0], img_mlo_.shape[1]))
                 else:
                     img_mlo[i] = img_mlo_.reshape((img_mlo_.shape[0], img_mlo_.shape[1], 1))
@@ -600,7 +604,7 @@ class DMExamListIterator(Iterator):
                         format(prefix=self.save_prefix, bi=bi, view=view, ii=ii,
                                hash=rng.randint(1e4))
                 fname = fname_base + '.' + self.save_format
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     img = img.reshape((img.shape[1], img.shape[2]))
                 else:
                     img = img.reshape((img.shape[0], img.shape[1]))
@@ -659,7 +663,7 @@ class DMCandidROIIterator(Iterator):
 
     def __init__(self, image_data_generator, img_list, lab_list=None,
                  target_height=1024, target_scale=4095, gs_255=False, 
-                 dim_ordering='default',
+                 data_format='default',
                  class_mode='categorical', validation_mode=False,
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  one_patch_mode=False,
@@ -674,13 +678,13 @@ class DMCandidROIIterator(Iterator):
                  verbose=True):
         '''DM candidate roi iterator
         '''
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         self.image_data_generator = image_data_generator
         self.target_height = target_height
         self.target_scale = target_scale
         self.gs_255 = gs_255
-        self.dim_ordering = dim_ordering
+        self.data_format = data_format
         self.roi_per_img = roi_per_img
         self.roi_size = roi_size
         self.one_patch_mode = one_patch_mode
@@ -697,7 +701,7 @@ class DMCandidROIIterator(Iterator):
         self.auto_batch_balance = auto_batch_balance
         self.low_int_threshold = low_int_threshold
         # Always gray-scale.
-        if self.dim_ordering == 'tf':
+        if self.data_format == 'channels_last':
             self.image_shape = self.roi_size + (1,)
         else:
             self.image_shape = (1,) + self.roi_size
@@ -820,7 +824,7 @@ class DMCandidROIIterator(Iterator):
             # get roi image patches.
             roi_patches = get_roi_patches(img, key_pts, self.roi_size)
             # Always have one channel.
-            if self.dim_ordering == 'th':
+            if self.data_format == 'channels_first':
                 xs = roi_patches.reshape(
                     (roi_patches.shape[0], 1, roi_patches.shape[1], 
                      roi_patches.shape[2]))
@@ -850,7 +854,7 @@ class DMCandidROIIterator(Iterator):
                            index=current_index*nb_img_roi + i,
                            hash=rng.randint(1e4), format=self.save_format)
                 img = batch_x[i]
-                if self.dim_ordering == 'th':
+                if self.data_format == 'channels_first':
                     img = img.reshape((img.shape[1], img.shape[2]))
                 else:
                     img = img.reshape((img.shape[0], img.shape[1]))
@@ -968,24 +972,24 @@ class DMNumpyArrayIterator(Iterator):
     def __init__(self, x, y, image_data_generator,
                  batch_size=32, auto_batch_balance=True, no_pos_skip=0.,
                  balance_classes=0., preprocess=None, shuffle=False, seed=None,
-                 dim_ordering='default',
+                 data_format='default',
                  save_to_dir=None, save_prefix='', save_format='jpeg'):
         if y is not None and len(x) != len(y):
             raise ValueError('X (images tensor) and y (labels) '
                              'should have the same length. '
                              'Found: X.shape = %s, y.shape = %s' %
                              (np.asarray(x).shape, np.asarray(y).shape))
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         self.x = np.asarray(x, dtype=K.floatx())
         if self.x.ndim != 4:
             raise ValueError('Input data in `DMNumpyArrayIterator` '
                              'should have rank 4. You passed an array '
                              'with shape', self.x.shape)
-        channels_axis = 3 if dim_ordering == 'tf' else 1
+        channels_axis = 3 if data_format == 'channels_last' else 1
         if self.x.shape[channels_axis] not in {1, 3, 4}:
             raise ValueError('DMNumpyArrayIterator is set to use the '
-                             'dimension ordering convention "' + dim_ordering + '" '
+                             'dimension ordering convention "' + data_format + '" '
                              '(channels on axis ' + str(channels_axis) + '), i.e. expected '
                              'either 1, 3 or 4 channels on axis ' + str(channels_axis) + '. '
                              'However, it was passed an array with shape ' + str(self.x.shape) +
@@ -1000,7 +1004,7 @@ class DMNumpyArrayIterator(Iterator):
         self.no_pos_skip = no_pos_skip
         self.balance_classes = balance_classes
         self.preprocess = preprocess if preprocess is not None else lambda x: x
-        self.dim_ordering = dim_ordering
+        self.data_format = data_format
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
@@ -1048,7 +1052,7 @@ class DMNumpyArrayIterator(Iterator):
             batch_x[i] = x
         if self.save_to_dir:
             for i in range(current_batch_size):
-                img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
+                img = array_to_img(batch_x[i], self.data_format, scale=True)
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
                                                                   hash=np.random.randint(1e4),
@@ -1070,7 +1074,7 @@ class DMDirectoryIterator(Iterator):
     def __init__(self, directory, image_data_generator,
                  target_size=(256, 256), target_scale=None, gs_255=False,
                  equalize_hist=False,
-                 dup_3_channels=False, dim_ordering='default',
+                 dup_3_channels=False, data_format='default',
                  classes=None, class_mode='categorical', 
                  auto_batch_balance=False, batch_size=32, 
                  preprocess=None, shuffle=True, seed=None,
@@ -1082,8 +1086,8 @@ class DMDirectoryIterator(Iterator):
                 channels or not. This can be useful when using pretrained models 
                 from databases such as ImageNet.
         '''
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         self.directory = directory
         self.image_data_generator = image_data_generator
         self.target_size = tuple(target_size)
@@ -1092,14 +1096,14 @@ class DMDirectoryIterator(Iterator):
         self.equalize_hist = equalize_hist
         # self.xtype = 'uint8' if equalize_hist else 'float32'
         self.dup_3_channels = dup_3_channels
-        self.dim_ordering = dim_ordering
+        self.data_format = data_format
         if self.dup_3_channels:
-            if self.dim_ordering == 'tf':
+            if self.data_format == 'channels_last':
                 self.image_shape = self.target_size + (3,)
             else:
                 self.image_shape = (3,) + self.target_size
         else:
-            if self.dim_ordering == 'tf':
+            if self.data_format == 'channels_last':
                 self.image_shape = self.target_size + (1,)
             else:
                 self.image_shape = (1,) + self.target_size
@@ -1181,7 +1185,7 @@ class DMDirectoryIterator(Iterator):
                                   gs_255=self.gs_255)
             if self.equalize_hist:
                 img = cv2.equalizeHist(img.astype('uint8'))
-            if self.dim_ordering == 'th':
+            if self.data_format == 'channels_first':
                 x = np.zeros((nb_channel,) + img.shape, dtype='float32')
                 x[0,:,:] = img
                 if self.dup_3_channels:
@@ -1199,7 +1203,7 @@ class DMDirectoryIterator(Iterator):
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
             for i in range(current_batch_size):
-                img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
+                img = array_to_img(batch_x[i], self.data_format, scale=True)
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
                                                                   hash=np.random.randint(1e4),
@@ -1246,10 +1250,10 @@ class DMImageDataGenerator(ImageDataGenerator):
                  horizontal_flip=False,
                  vertical_flip=False,
                  rescale=None,
-                 dim_ordering='default'):
+                 data_format='default'):
 
-        if dim_ordering == 'default':
-            dim_ordering = K.image_dim_ordering()
+        if data_format == 'default':
+            data_format = K.image_data_format()
         super(DMImageDataGenerator, self).__init__(
             featurewise_center=featurewise_center,
             samplewise_center=samplewise_center,
@@ -1267,7 +1271,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             horizontal_flip=horizontal_flip,
             vertical_flip=vertical_flip,
             rescale=rescale,
-            dim_ordering=dim_ordering)
+            data_format=data_format)
 
 
     def flow_from_img_list(self, img_list, lab_list, 
@@ -1281,7 +1285,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             target_size=target_size, target_scale=target_scale, gs_255=gs_255, 
             class_mode=class_mode, validation_mode=validation_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip,
-            dim_ordering=self.dim_ordering,
+            data_format=self.data_format,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format,
             verbose=verbose)
@@ -1300,7 +1304,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             class_mode=class_mode,
             validation_mode=validation_mode, prediction_mode=prediction_mode,
             balance_classes=balance_classes, all_neg_skip=all_neg_skip, 
-            dim_ordering=self.dim_ordering,
+            data_format=self.data_format,
             batch_size=batch_size, shuffle=shuffle, seed=seed,
             save_to_dir=save_to_dir, save_prefix=save_prefix, save_format=save_format,
             verbose=verbose)
@@ -1308,7 +1312,7 @@ class DMImageDataGenerator(ImageDataGenerator):
 
     def flow_from_candid_roi(self, img_list, lab_list=None,
                  target_height=1024, target_scale=4095, gs_255=False, 
-                 dim_ordering='default',
+                 data_format='default',
                  class_mode='categorical', validation_mode=False,
                  img_per_batch=2, roi_per_img=32, roi_size=(256, 256),
                  one_patch_mode=False,
@@ -1324,7 +1328,7 @@ class DMImageDataGenerator(ImageDataGenerator):
         return DMCandidROIIterator(
             self, img_list, lab_list, 
             target_height=target_height, target_scale=target_scale, 
-            gs_255=gs_255, dim_ordering=dim_ordering,
+            gs_255=gs_255, data_format=data_format,
             class_mode=class_mode, validation_mode=validation_mode,
             img_per_batch=img_per_batch, roi_per_img=roi_per_img, 
             roi_size=roi_size, one_patch_mode=one_patch_mode,
@@ -1354,7 +1358,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             preprocess=preprocess,
             shuffle=shuffle,
             seed=seed,
-            dim_ordering=self.dim_ordering,
+            data_format=self.data_format,
             save_to_dir=save_to_dir,
             save_prefix=save_prefix,
             save_format=save_format)
@@ -1363,7 +1367,7 @@ class DMImageDataGenerator(ImageDataGenerator):
     def flow_from_directory(self, directory,
                             target_size=(256, 256), target_scale=None, 
                             gs_255=False, equalize_hist=False,
-                            dup_3_channels=False, dim_ordering='default',
+                            dup_3_channels=False, data_format='default',
                             classes=None, class_mode='categorical',
                             auto_batch_balance=False, batch_size=32, 
                             preprocess=None, shuffle=True, seed=None,
@@ -1375,7 +1379,7 @@ class DMImageDataGenerator(ImageDataGenerator):
             directory, self,
             target_size=target_size, target_scale=target_scale, gs_255=gs_255,
             equalize_hist=equalize_hist,
-            dup_3_channels=dup_3_channels, dim_ordering=dim_ordering,
+            dup_3_channels=dup_3_channels, data_format=data_format,
             classes=classes, class_mode=class_mode,
             auto_batch_balance=auto_batch_balance, batch_size=batch_size, 
             preprocess=preprocess, shuffle=shuffle, seed=seed,
