@@ -178,13 +178,14 @@ def run(train_dir, val_dir, test_dir,
         bias_multiplier=bias_multiplier, hidden_dropout2=hidden_dropout2)
 
     # Training report.
-    min_loss_locs, = np.where(loss_hist == min(loss_hist))
-    best_val_loss = loss_hist[min_loss_locs[0]]
-    best_val_accuracy = acc_hist[min_loss_locs[0]]
-    print "\n==== Training summary ===="
-    print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
-    print "Best val loss:", best_val_loss
-    print "Best val accuracy:", best_val_accuracy
+    if len(loss_hist) > 0:
+        min_loss_locs, = np.where(loss_hist == min(loss_hist))
+        best_val_loss = loss_hist[min_loss_locs[0]]
+        best_val_accuracy = acc_hist[min_loss_locs[0]]
+        print "\n==== Training summary ===="
+        print "Minimum val loss achieved at epoch:", min_loss_locs[0] + 1
+        print "Best val loss:", best_val_loss
+        print "Best val accuracy:", best_val_accuracy
 
     if final_model != "NOSAVE":
         model.save(final_model)
