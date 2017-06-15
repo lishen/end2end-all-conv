@@ -70,7 +70,7 @@ def index_balancer(index_array, classes, ratio, rng):
 
 
 def read_resize_img(fname, target_size=None, target_height=None, 
-                    target_scale=None, gs_255=False):
+                    target_scale=None, gs_255=False, rescale_factor=None):
     '''Read an image (.png, .jpg, .dcm) and resize it to target size.
     '''
     if target_size is None and target_height is None:
@@ -94,6 +94,8 @@ def read_resize_img(fname, target_size=None, target_height=None,
     if target_scale is not None:
         img_max = img.max() if img.max() != 0 else target_scale
         img *= target_scale/img_max
+    if rescale_factor is not None:
+        img *= rescale_factor
     return img
 
 
@@ -1073,7 +1075,7 @@ class DMDirectoryIterator(Iterator):
 
     def __init__(self, directory, image_data_generator,
                  target_size=(256, 256), target_scale=None, gs_255=False,
-                 equalize_hist=False,
+                 equalize_hist=False, rescale_factor=None,
                  dup_3_channels=False, data_format='default',
                  classes=None, class_mode='categorical', 
                  auto_batch_balance=False, batch_size=32, 
@@ -1094,6 +1096,7 @@ class DMDirectoryIterator(Iterator):
         self.target_scale = target_scale
         self.gs_255 = gs_255
         self.equalize_hist = equalize_hist
+        self.rescale_factor = rescale_factor
         # self.xtype = 'uint8' if equalize_hist else 'float32'
         self.dup_3_channels = dup_3_channels
         self.data_format = data_format
@@ -1182,7 +1185,8 @@ class DMDirectoryIterator(Iterator):
             img = read_resize_img(path.join(self.directory, fname),
                                   target_size=self.target_size,
                                   target_scale=self.target_scale,
-                                  gs_255=self.gs_255)
+                                  gs_255=self.gs_255,
+                                  rescale_factor=self.rescale_factor)
             if self.equalize_hist:
                 img = cv2.equalizeHist(img.astype('uint8'))
             if self.data_format == 'channels_first':
@@ -1367,6 +1371,7 @@ class DMImageDataGenerator(ImageDataGenerator):
     def flow_from_directory(self, directory,
                             target_size=(256, 256), target_scale=None, 
                             gs_255=False, equalize_hist=False,
+                            rescale_factor=None,
                             dup_3_channels=False, data_format='default',
                             classes=None, class_mode='categorical',
                             auto_batch_balance=False, batch_size=32, 
@@ -1378,7 +1383,7 @@ class DMImageDataGenerator(ImageDataGenerator):
         return DMDirectoryIterator(
             directory, self,
             target_size=target_size, target_scale=target_scale, gs_255=gs_255,
-            equalize_hist=equalize_hist,
+            equalize_hist=equalize_hist, rescale_factor=rescale_factor,
             dup_3_channels=dup_3_channels, data_format=data_format,
             classes=classes, class_mode=class_mode,
             auto_batch_balance=auto_batch_balance, batch_size=batch_size, 

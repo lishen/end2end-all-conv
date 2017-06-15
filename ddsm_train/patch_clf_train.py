@@ -20,7 +20,7 @@ warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
 def run(train_dir, val_dir, test_dir,
-        img_size=[256, 256], img_scale=255., 
+        img_size=[256, 256], img_scale=None, rescale_factor=None,
         featurewise_center=True, featurewise_mean=59.6, 
         equalize_hist=True, augmentation=False,
         class_list=['background', 'malignant', 'benign'],
@@ -95,6 +95,7 @@ def run(train_dir, val_dir, test_dir,
         print "Create generator for raw train set"
         raw_generator = raw_imgen.flow_from_directory(
             train_dir, target_size=img_size, target_scale=img_scale, 
+            rescale_factor=rescale_factor,
             equalize_hist=equalize_hist, dup_3_channels=dup_3_channels,
             classes=class_list, class_mode='categorical', 
             batch_size=train_bs, shuffle=False)
@@ -111,15 +112,16 @@ def run(train_dir, val_dir, test_dir,
         print "Create generator for train set"
         train_generator = train_imgen.flow_from_directory(
             train_dir, target_size=img_size, target_scale=img_scale,
+            rescale_factor=rescale_factor,
             equalize_hist=equalize_hist, dup_3_channels=dup_3_channels,
             classes=class_list, class_mode='categorical', 
             auto_batch_balance=auto_batch_balance, batch_size=train_bs, 
             preprocess=preprocess_input, shuffle=True, seed=random_seed)
-    # import pdb; pdb.set_trace()
 
     print "Create generator for val set"
     validation_set = val_imgen.flow_from_directory(
         val_dir, target_size=img_size, target_scale=img_scale,
+        rescale_factor=rescale_factor,
         equalize_hist=equalize_hist, dup_3_channels=dup_3_channels,
         classes=class_list, class_mode='categorical', 
         batch_size=batch_size, preprocess=preprocess_input, shuffle=False)
@@ -164,6 +166,7 @@ def run(train_dir, val_dir, test_dir,
     #### DEBUG ####
     # val_samples = 100
     #### DEBUG ####
+    # import pdb; pdb.set_trace()
     model, loss_hist, acc_hist = do_3stage_training(
         model, org_model, train_generator, validation_set, validation_steps, 
         best_model, train_batches, top_layer_nb, net, nb_epoch=nb_epoch,
@@ -194,6 +197,7 @@ def run(train_dir, val_dir, test_dir,
     print "\n==== Predicting on test set ===="
     test_generator = test_imgen.flow_from_directory(
         test_dir, target_size=img_size, target_scale=img_scale,
+        rescale_factor=rescale_factor,
         equalize_hist=equalize_hist, dup_3_channels=dup_3_channels, 
         classes=class_list, class_mode='categorical', batch_size=batch_size, 
         preprocess=preprocess_input, shuffle=False)
@@ -220,7 +224,10 @@ if __name__ == '__main__':
     parser.add_argument("test_dir", type=str)
     parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, 
                         default=[256, 256])
-    parser.add_argument("--img-scale", "-ic", dest="img_scale", type=float, default=4095.)
+    parser.add_argument("--img-scale", "-ic", dest="img_scale", type=float, default=None)
+    parser.add_argument("--no-img-scale", "-nic", dest="img_scale", action="store_const", const=None)
+    parser.add_argument("--rescale-factor", dest="rescale_factor", type=float, default=None)
+    parser.add_argument("--no-rescale-factor", dest="rescale_factor", action="store_const", const=None)
     parser.add_argument("--featurewise-center", dest="featurewise_center", action="store_true")
     parser.add_argument("--no-featurewise-center", dest="featurewise_center", action="store_false")
     parser.set_defaults(featurewise_center=True)
@@ -285,6 +292,7 @@ if __name__ == '__main__':
     run_opts = dict(
         img_size=args.img_size, 
         img_scale=args.img_scale, 
+        rescale_factor=args.rescale_factor,
         featurewise_center=args.featurewise_center,
         featurewise_mean=args.featurewise_mean,
         equalize_hist=args.equalize_hist,
