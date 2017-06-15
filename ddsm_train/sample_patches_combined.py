@@ -269,7 +269,9 @@ def sample_blob_negatives(img, roi_mask, out_dir, img_id, abn, blob_detector,
 
 def run(roi_mask_path_file, roi_mask_dir, pat_train_list_file, full_img_dir, 
         train_out_dir, val_out_dir,
-        target_height=4096, patch_size=256, nb_bkg=30, nb_abn=30, nb_hns=15,
+        target_height=4096, target_width=None, patch_size=256, 
+        segment_breast=True,
+        nb_bkg=30, nb_abn=30, nb_hns=15,
         pos_cutoff=.75, neg_cutoff=.35, val_size=.1,
         bkg_dir='background', calc_pos_dir='calc_mal', calc_neg_dir='calc_ben',
         mass_pos_dir='mass_mal', mass_neg_dir='mass_ben', verbose=True):
@@ -338,11 +340,17 @@ def run(roi_mask_path_file, roi_mask_dir, pat_train_list_file, full_img_dir,
             full_fn = const_filename(pat, side, view, full_img_dir)
             # import pdb; pdb.set_trace()
             try:
-                full_img = read_resize_img(full_fn, target_height=target_height)
+                if target_width is None:
+                    full_img = read_resize_img(
+                        full_fn, target_height=target_height)
+                else:
+                    full_img = read_resize_img(
+                        full_fn, target_size=(target_height, target_width))
                 img_id = '_'.join([pat, side, view])
                 print "ID:%s, read image of size=%s" % (img_id, full_img.shape),
-                full_img, bbox = imprep.segment_breast(full_img)
-                print "size after segmentation=%s" % (str(full_img.shape))
+                if segment_breast:
+                    full_img, bbox = imprep.segment_breast(full_img)
+                    print "size after segmentation=%s" % (str(full_img.shape))
                 sys.stdout.flush()
                 # Read mask image(s).
                 abn_path = roi_mask_path_df.loc[pat].loc[side].loc[view]
@@ -357,9 +365,15 @@ def run(roi_mask_path_file, roi_mask_dir, pat_train_list_file, full_img_dir,
                 bkg_sampled = False
                 for abn, path, itype in zip(abn_num, pathology, itypes):
                     mask_fn = const_filename(pat, side, view, roi_mask_dir, itype, abn)
-                    mask_img = read_resize_img(mask_fn, target_height=target_height, 
-                                               gs_255=True)
-                    mask_img = crop_img(mask_img, bbox)
+                    if target_width is None:
+                        mask_img = read_resize_img(
+                            mask_fn, target_height=target_height, gs_255=True)
+                    else:
+                        mask_img = read_resize_img(
+                            mask_fn, target_size=(target_height, target_width), 
+                            gs_255=True)
+                    if segment_breast:
+                        mask_img = crop_img(mask_img, bbox)
                     # sample using mask and full image.
                     nb_hns_ = nb_hns if not bkg_sampled else 0
                     if nb_hns_ > 0:
@@ -405,6 +419,11 @@ if __name__ == '__main__':
     parser.add_argument("train_out_dir", type=str)
     parser.add_argument("val_out_dir", type=str)
     parser.add_argument("--target-height", dest="target_height", type=int, default=4096)
+    parser.add_argument("--target-width", dest="target_width", type=int, default=None)
+    parser.add_argument("--no-target-width", dest="target_width", action="store_const", const=None)
+    parser.add_argument("--segment-breast", dest="segment_breast", action="store_true")
+    parser.add_argument("--no-segment-breast", dest="segment_breast", action="store_false")
+    parser.set_defaults(segment_breast=True)
     parser.add_argument("--patch-size", dest="patch_size", type=int, default=256)
     parser.add_argument("--nb-bkg", dest="nb_bkg", type=int, default=30)
     parser.add_argument("--nb-abn", dest="nb_abn", type=int, default=30)
@@ -424,6 +443,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     run_opts = dict(
         target_height=args.target_height,
+        target_width=args.target_width,
+        segment_breast=args.segment_breast,
         patch_size=args.patch_size,
         nb_bkg=args.nb_bkg,
         nb_abn=args.nb_abn,
