@@ -102,26 +102,34 @@ def sample_patches(img, roi_mask, out_dir, img_id, abn, pos, patch_size=256,
             cy = int(M['m01']/M['m00'])
             print "ROI centroid=", (cx,cy); sys.stdout.flush()
         except ZeroDivisionError:
-            print "ROI centroid=Unknown"; sys.stdout.flush()
+            cx = rx + int(rw/2)
+            cy = ry + int(rh/2)
+            print "ROI centroid=Unknown, use b-box center=", (cx,cy)
+            sys.stdout.flush()
 
     rng = np.random.RandomState(12345)
     # Sample abnormality first.
     sampled_abn = 0
     nb_try = 0
     while sampled_abn < nb_abn:
-        x = rng.randint(rx, rx + rw)
-        y = rng.randint(ry, ry + rh)
-        nb_try += 1
-        if nb_try >= 1000:
-            print "Nb of trials reached maximum, decrease overlap cutoff by 0.05"
-            sys.stdout.flush()
-            pos_cutoff -= .05
-            nb_try = 0
-            if pos_cutoff <= .0:
-                raise Exception("overlap cutoff becomes non-positive, "
-                                "check roi mask input.")
+        if nb_abn > 1:
+            x = rng.randint(rx, rx + rw)
+            y = rng.randint(ry, ry + rh)
+            nb_try += 1
+            if nb_try >= 1000:
+                print "Nb of trials reached maximum, decrease overlap cutoff by 0.05"
+                sys.stdout.flush()
+                pos_cutoff -= .05
+                nb_try = 0
+                if pos_cutoff <= .0:
+                    raise Exception("overlap cutoff becomes non-positive, "
+                                    "check roi mask input.")
+        else:
+            x = cx
+            y = cy
         # import pdb; pdb.set_trace()
-        if overlap_patch_roi((x,y), patch_size, roi_mask, cutoff=pos_cutoff):
+        if nb_abn == 1 or overlap_patch_roi((x,y), patch_size, roi_mask, 
+                                            cutoff=pos_cutoff):
             patch = img[y - patch_size/2:y + patch_size/2, 
                         x - patch_size/2:x + patch_size/2]
             patch = patch.astype('int32')
