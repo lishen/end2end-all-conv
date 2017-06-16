@@ -50,141 +50,50 @@ def load_dat_ram(generator, nb_samples):
 
 
 def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None, 
-                 img_size=(256,256), top_layer_nb=None, weight_decay=.01,
+                 top_layer_nb=None, weight_decay=.01,
                  bias_multiplier=.1, hidden_dropout=.0, **kw_args):
     '''Load existing DL model or create it from new
     Args:
         kw_args: keyword arguments for creating resnet.
     '''
-    if use_pretrained:
-        if data_format == "channels_last":
-            input_shape = tuple(img_size) + (3,)
-        else:
-            input_shape = (3,) + tuple(img_size)
-        if net == 'resnet50':
-            from keras.applications.resnet50 import ResNet50, preprocess_input
-            top_layer_nb = 162 if top_layer_nb is None else top_layer_nb
-        elif net == 'vgg16':
-            from keras.applications.vgg16 import VGG16, preprocess_input
-            top_layer_nb = 15 if top_layer_nb is None else top_layer_nb
-        elif net == 'vgg19':
-            from keras.applications.vgg19 import VGG19, preprocess_input
-            top_layer_nb = 17 if top_layer_nb is None else top_layer_nb
-        elif net == 'xception':
-            from keras.applications.xception import Xception, preprocess_input
-            top_layer_nb = 126 if top_layer_nb is None else top_layer_nb
-        elif net == 'inception':
-            from keras.applications.inception_v3 import InceptionV3, preprocess_input
-            top_layer_nb = 194 if top_layer_nb is None else top_layer_nb
-        else:
-            raise Exception("Pretrained model is not available: " + net)
+    if net == 'resnet50':
+        from keras.applications.resnet50 import ResNet50 as NNet, preprocess_input
+        top_layer_nb = 162 if top_layer_nb is None else top_layer_nb
+    elif net == 'vgg16':
+        from keras.applications.vgg16 import VGG16 as NNet, preprocess_input
+        top_layer_nb = 15 if top_layer_nb is None else top_layer_nb
+    elif net == 'vgg19':
+        from keras.applications.vgg19 import VGG19 as NNet, preprocess_input
+        top_layer_nb = 17 if top_layer_nb is None else top_layer_nb
+    elif net == 'xception':
+        from keras.applications.xception import Xception as NNet, preprocess_input
+        top_layer_nb = 126 if top_layer_nb is None else top_layer_nb
+    elif net == 'inception':
+        from keras.applications.inception_v3 import InceptionV3 as NNet, preprocess_input
+        top_layer_nb = 194 if top_layer_nb is None else top_layer_nb
     else:
-        preprocess_input = None
+        raise Exception("Requested model is not available: " + net)
+    weights = 'imagenet' if use_pretrained else None
 
     if resume_from is not None:
         print "Loading existing model state.",
         sys.stdout.flush()
         model = load_model(resume_from)
         print "Done."
-    elif net == 'resnet38':
-        print "Building resnet38 from scratch.",
-        sys.stdout.flush()
-        model = ResNetBuilder.build_resnet_38(
-            (1, img_size[0], img_size[1]), nb_class, 
-            weight_decay=weight_decay, hidden_dropout=hidden_dropout, 
-            **kw_args)
-        print "Done."
-    elif net == 'resnet50':
-        if use_pretrained:
-            print "Loading pretrained resnet50.",
-            sys.stdout.flush()
-            base_model = ResNet50(weights='imagenet', include_top=False, 
-                                  input_shape=input_shape)
-            x = base_model.output
-            x = Flatten()(x)
-            if hidden_dropout > 0.:
-                x = Dropout(hidden_dropout)(x)
-            preds = Dense(nb_class, activation='softmax', 
-                          kernel_regularizer=l2(weight_decay), 
-                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
-            model = Model(input=base_model.input, output=preds)
-            print "Done."
-        else:
-            model = ResNetBuilder.build_resnet_50(
-                (1, img_size[0], img_size[1]), nb_class, 
-                weight_decay=weight_decay, hidden_dropout=hidden_dropout, 
-                **kw_args)
-    elif net == 'vgg16':
-        if use_pretrained:
-            print "Loading pretrained vgg16.",
-            sys.stdout.flush()
-            base_model = VGG16(weights='imagenet', include_top=False, 
-                               input_shape=input_shape)
-            x = base_model.output
-            x = GlobalAveragePooling2D()(x)
-            if hidden_dropout > 0.:
-                x = Dropout(hidden_dropout)(x)
-            preds = Dense(nb_class, activation='softmax', 
-                          kernel_regularizer=l2(weight_decay), 
-                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
-            model = Model(input=base_model.input, output=preds)
-            print "Done."
-    elif net == 'vgg19':
-        if use_pretrained:
-            print "Loading pretrained vgg19.",
-            sys.stdout.flush()
-            base_model = VGG19(weights='imagenet', include_top=False, 
-                               input_shape=input_shape)
-            x = base_model.output
-            x = GlobalAveragePooling2D()(x)
-            if hidden_dropout > 0.:
-                x = Dropout(hidden_dropout)(x)
-            preds = Dense(nb_class, activation='softmax', 
-                          kernel_regularizer=l2(weight_decay), 
-                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
-            model = Model(input=base_model.input, output=preds)
-            print "Done."
-        else:
-            raise Exception("This is not implemented: net=%s, "
-                            "use_pretrained=%s." % (net, use_pretrained))
-    elif net == 'xception':
-        if use_pretrained:
-            print "Loading pretrained xception.",
-            sys.stdout.flush()
-            base_model = Xception(weights='imagenet', include_top=False, 
-                                  input_shape=input_shape)
-            x = base_model.output
-            x = GlobalAveragePooling2D()(x)
-            if hidden_dropout > 0.:
-                x = Dropout(hidden_dropout)(x)
-            preds = Dense(nb_class, activation='softmax', 
-                          kernel_regularizer=l2(weight_decay), 
-                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
-            model = Model(input=base_model.input, output=preds)
-            print "Done."
-        else:
-            raise Exception("This is not implemented: net=%s, "
-                            "use_pretrained=%s." % (net, use_pretrained))
-    elif net == 'inception':
-        if use_pretrained:
-            print "Loading pretrained inception_v3.",
-            sys.stdout.flush()
-            base_model = InceptionV3(weights='imagenet', include_top=False, 
-                                     input_shape=input_shape)
-            x = base_model.output
-            x = GlobalAveragePooling2D()(x)
-            if hidden_dropout > 0.:
-                x = Dropout(hidden_dropout)(x)
-            preds = Dense(nb_class, activation='softmax', 
-                          kernel_regularizer=l2(weight_decay), 
-                          bias_regularizer=l2(weight_decay*bias_multiplier))(x)
-            model = Model(input=base_model.input, output=preds)
-            print "Done."
-        else:
-            raise Exception("This is not implemented: net=%s, "
-                            "use_pretrained=%s." % (net, use_pretrained))
     else:
-        raise Exception('Unrecognized network specification: ' + net)
+        print "Loading %s," % (net),
+        sys.stdout.flush()
+        base_model = NNet(weights=weights, include_top=False, 
+                          input_shape=None, pooling='avg')
+        x = base_model.output
+        if hidden_dropout > 0.:
+            x = Dropout(hidden_dropout)(x)
+        preds = Dense(nb_class, activation='softmax', 
+                      kernel_regularizer=l2(weight_decay), 
+                      bias_regularizer=l2(weight_decay*bias_multiplier))(x)
+        model = Model(input=base_model.input, output=preds)
+        print "Done."
+
     return model, preprocess_input, top_layer_nb
 
 
