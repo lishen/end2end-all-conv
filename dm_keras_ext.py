@@ -187,13 +187,13 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         print "top layer nb =", top_layer_nb
         for layer in org_model.layers[top_layer_nb:]:
             layer.trainable = True
-        # adjust weight decay and dropout rate for those BN heavy models.
-        if net == 'xception' or net == 'inception' or net == 'resnet50':
-            dense_layer = org_model.layers[-1]
-            dropout_layer = org_model.layers[-2]
-            dense_layer.kernel_regularizer.l2 = weight_decay2
-            dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
-            dropout_layer.rate = hidden_dropout2
+        # # adjust weight decay and dropout rate for those BN heavy models.
+        # if net == 'xception' or net == 'inception' or net == 'resnet50':
+        dense_layer = org_model.layers[-1]
+        dropout_layer = org_model.layers[-2]
+        dense_layer.kernel_regularizer.l2 = weight_decay2
+        dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
+        dropout_layer.rate = hidden_dropout2
         model.compile(optimizer=create_optimizer(optim, init_lr*top_layer_multiplier), 
                       loss='categorical_crossentropy', metrics=['accuracy'])
         print "Start training on the top layers only"; sys.stdout.flush()
