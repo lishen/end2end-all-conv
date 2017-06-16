@@ -62,10 +62,12 @@ def run(train_dir, val_dir, test_dir,
 
     # Add augmentation options.
     if augmentation:
-        train_imgen.horizontal_flip=True 
-        train_imgen.vertical_flip=True
-        train_imgen.rotation_range = 45.
-        train_imgen.shear_range = np.pi/8.
+        train_imgen.horizontal_flip = True 
+        train_imgen.vertical_flip = True
+        train_imgen.rotation_range = 25.  # in degree.
+        train_imgen.shear_range = .2  # in radians.
+        train_imgen.zoom_range = [.8, 1.2]  # in proportion.
+        train_imgen.channel_shift_range = 20.  # in pixel intensity values.
 
     # ================= Model creation ============== #
     model, preprocess_input, top_layer_nb = get_dl_model(
