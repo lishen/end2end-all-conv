@@ -9,10 +9,11 @@ from keras.layers import (
     Flatten
 )
 from keras.layers.merge import concatenate, add
-from keras.layers.convolutional import (
-    Conv2D,
+from keras.layers.convolutional import Conv2D
+from keras.layers.pooling import (
     MaxPooling2D,
-    AveragePooling2D
+    # AveragePooling2D,
+    GlobalAveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
 from keras.regularizers import l1, l2, l1_l2
@@ -62,22 +63,23 @@ def _bn_relu_conv(nb_filter, nb_row, nb_col, strides=(1, 1),
 
 
 # Adds a shortcut between input and residual block and merges them with "sum"
-def _shortcut(input, residual, weight_decay=.0001, dropout=.0):
+def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True, 
+              strides=(1, 1)):
     # Expand channels of shortcut to match residual.
     # Stride appropriately to match residual (width, height)
     # Should be int if network architecture is correctly configured.
     # !!! The dropout argument is just a place holder. 
     # !!! It shall not be applied to identity mapping.
-    stride_width = input._keras_shape[ROW_AXIS] // residual._keras_shape[ROW_AXIS]
-    stride_height = input._keras_shape[COL_AXIS] // residual._keras_shape[COL_AXIS]
-    equal_channels = residual._keras_shape[CHANNEL_AXIS] == input._keras_shape[CHANNEL_AXIS]
+    # stride_width = input._keras_shape[ROW_AXIS] // residual._keras_shape[ROW_AXIS]
+    # stride_height = input._keras_shape[COL_AXIS] // residual._keras_shape[COL_AXIS]
+    # equal_channels = residual._keras_shape[CHANNEL_AXIS] == input._keras_shape[CHANNEL_AXIS]
 
     shortcut = input
     # 1 X 1 conv if shape is different. Else identity.
-    if stride_width > 1 or stride_height > 1 or not equal_channels:
+    # if stride_width > 1 or stride_height > 1 or not equal_channels:
+    if not identity:
         shortcut = Conv2D(filters=residual._keras_shape[CHANNEL_AXIS],
-                          kernel_size=(1, 1),
-                          strides=(stride_width, stride_height),
+                          kernel_size=(1, 1), strides=strides,
                           kernel_initializer="he_normal", padding="valid", 
                           kernel_regularizer=l2(weight_decay))(input)
 
@@ -89,10 +91,14 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
     def f(input):
         for i in range(repetitions):
             init_strides = (1, 1)
+            identity = True
             if i == 0 and not is_first_layer:
                 init_strides = (2, 2)
+            if i == 0:
+                identity = False
             input = block_function(nb_filters=nb_filters, 
-                                   init_strides=init_strides, **kw_args)(input)
+                                   init_strides=init_strides, 
+                                   identity=identity, **kw_args)(input)
         return input
 
     return f
@@ -101,11 +107,12 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
 # Basic 3 X 3 convolution blocks.
 # Use for resnet with layers <= 34
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
-def basic_block(nb_filters, init_strides=(1, 1), **kw_args):
+def basic_block(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
     def f(input):
         conv1 = _bn_relu_conv(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv1)
-        return _shortcut(input, residual, **kw_args)
+        return _shortcut(input, residual, identity=identity, 
+                         strides=init_strides, **kw_args)
 
     return f
 
@@ -113,12 +120,13 @@ def basic_block(nb_filters, init_strides=(1, 1), **kw_args):
 # Bottleneck architecture for > 34 layer resnet.
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
-def bottleneck(nb_filters, init_strides=(1, 1), **kw_args):
+def bottleneck(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
     def f(input):
         conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
         residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
-        return _shortcut(input, residual, **kw_args)
+        return _shortcut(input, residual, identity=identity, 
+                         strides=init_strides, **kw_args)
 
     return f
 
@@ -166,13 +174,13 @@ class ResNetBuilder(object):
             nb_filters *= 2
 
         # Classifier block
-        pool2 = AveragePooling2D(pool_size=(block._keras_shape[ROW_AXIS],
-                                            block._keras_shape[COL_AXIS]),
-                                 strides=(1, 1))(block)
-        # pool2 = Dropout(hidden_dropout)(pool2)
-        flatten1 = Flatten()(pool2)
+        # pool2 = AveragePooling2D(pool_size=(block._keras_shape[ROW_AXIS],
+        #                                     block._keras_shape[COL_AXIS]),
+        #                          strides=(1, 1))(block)
+        # flatten1 = Flatten()(pool2)
+        pool2 = GlobalAveragePooling2D()(block)
 
-        return input_, flatten1
+        return input_, pool2
 
     @staticmethod
     def l1l2_penalty_reg(alpha=1.0, l1_ratio=0.5):
