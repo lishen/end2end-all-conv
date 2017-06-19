@@ -117,6 +117,16 @@ def basic_block(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
     return f
 
 
+def basic_block_org(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+    def f(input):
+        conv1 = _conv_bn_relu(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
+        residual = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv1)
+        return _shortcut(input, residual, identity=identity, 
+                         strides=init_strides, **kw_args)
+
+    return f
+
+
 # Bottleneck architecture for > 34 layer resnet.
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
@@ -125,6 +135,17 @@ def bottleneck(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
         conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
         residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
+        return _shortcut(input, residual, identity=identity, 
+                         strides=init_strides, **kw_args)
+
+    return f
+
+
+def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+    def f(input):
+        conv_1_1 = _conv_bn_relu(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
+        conv_3_3 = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv_1_1)
+        residual = _conv_bn_relu(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, **kw_args)
 
@@ -283,6 +304,20 @@ class ResNetBuilder(object):
                         inp_dropout=.0, hidden_dropout=.0):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
+            nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
+            init_conv_stride=init_conv_stride,
+            pool_size=pool_size, pool_stride=pool_stride,
+            weight_decay=weight_decay, inp_dropout=inp_dropout, 
+            hidden_dropout=hidden_dropout)
+
+    @classmethod
+    def build_resnet_50_org(cls, input_shape, num_outputs, 
+                        nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
+                        pool_size=3, pool_stride=2, 
+                        weight_decay=.0001, alpha=1., l1_ratio=.5,
+                        inp_dropout=.0, hidden_dropout=.0):
+        return cls.build(
+            input_shape, num_outputs, bottleneck_org, [3, 4, 6, 3], 
             nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
             init_conv_stride=init_conv_stride,
             pool_size=pool_size, pool_stride=pool_stride,
