@@ -64,7 +64,7 @@ def _bn_relu_conv(nb_filter, nb_row, nb_col, strides=(1, 1),
 
 # Adds a shortcut between input and residual block and merges them with "sum"
 def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True, 
-              strides=(1, 1), with_bn=False):
+              strides=(1, 1), with_bn=False, org=False):
     # Expand channels of shortcut to match residual.
     # Stride appropriately to match residual (width, height)
     # Should be int if network architecture is correctly configured.
@@ -85,7 +85,11 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True,
         if with_bn:
             shortcut = BatchNormalization(axis=CHANNEL_AXIS)(shortcut)
 
-    return add([shortcut, residual])
+    addition = add([shortcut, residual])
+    if not org:
+        return addition
+    else:
+        return Activation("relu")(addition)
 
 
 # Builds a residual block with repeating bottleneck blocks.
@@ -131,7 +135,7 @@ def basic_block_org(nb_filters, init_strides=(1, 1), identity=True,
         residual = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv1)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
-                         with_bn=shortcut_with_bn, **kw_args)
+                         with_bn=shortcut_with_bn, org=True, **kw_args)
 
     return f
 
@@ -160,7 +164,7 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
         residual = _conv_bn_relu(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
-                         with_bn=shortcut_with_bn, **kw_args)
+                         with_bn=shortcut_with_bn, org=True, **kw_args)
 
     return f
 
