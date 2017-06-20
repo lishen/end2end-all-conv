@@ -64,7 +64,7 @@ def _bn_relu_conv(nb_filter, nb_row, nb_col, strides=(1, 1),
 
 # Adds a shortcut between input and residual block and merges them with "sum"
 def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True, 
-              strides=(1, 1)):
+              strides=(1, 1), with_bn=False):
     # Expand channels of shortcut to match residual.
     # Stride appropriately to match residual (width, height)
     # Should be int if network architecture is correctly configured.
@@ -82,12 +82,15 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True,
                           kernel_size=(1, 1), strides=strides,
                           kernel_initializer="he_normal", padding="valid", 
                           kernel_regularizer=l2(weight_decay))(input)
+        if with_bn:
+            shortcut = BatchNormalization(axis=CHANNEL_AXIS)(shortcut)
 
     return add([shortcut, residual])
 
 
 # Builds a residual block with repeating bottleneck blocks.
-def _residual_block(block_function, nb_filters, repetitions, is_first_layer=False, **kw_args):
+def _residual_block(block_function, nb_filters, repetitions, 
+                    is_first_layer=False, shortcut_with_bn=False, **kw_args):
     def f(input):
         for i in range(repetitions):
             init_strides = (1, 1)
@@ -98,7 +101,9 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
                 identity = False
             input = block_function(nb_filters=nb_filters, 
                                    init_strides=init_strides, 
-                                   identity=identity, **kw_args)(input)
+                                   identity=identity, 
+                                   shortcut_with_bn=shortcut_with_bn, 
+                                   **kw_args)(input)
         return input
 
     return f
@@ -107,22 +112,26 @@ def _residual_block(block_function, nb_filters, repetitions, is_first_layer=Fals
 # Basic 3 X 3 convolution blocks.
 # Use for resnet with layers <= 34
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
-def basic_block(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+def basic_block(nb_filters, init_strides=(1, 1), identity=True, 
+                shortcut_with_bn=False, **kw_args):
     def f(input):
         conv1 = _bn_relu_conv(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv1)
         return _shortcut(input, residual, identity=identity, 
-                         strides=init_strides, **kw_args)
+                         strides=init_strides, 
+                         with_bn=shortcut_with_bn, **kw_args)
 
     return f
 
 
-def basic_block_org(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+def basic_block_org(nb_filters, init_strides=(1, 1), identity=True, 
+                    shortcut_with_bn=False, **kw_args):
     def f(input):
         conv1 = _conv_bn_relu(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv1)
         return _shortcut(input, residual, identity=identity, 
-                         strides=init_strides, **kw_args)
+                         strides=init_strides, 
+                         with_bn=shortcut_with_bn, **kw_args)
 
     return f
 
@@ -130,24 +139,28 @@ def basic_block_org(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
 # Bottleneck architecture for > 34 layer resnet.
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
-def bottleneck(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+def bottleneck(nb_filters, init_strides=(1, 1), identity=True, 
+               shortcut_with_bn=False, **kw_args):
     def f(input):
         conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
         residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
-                         strides=init_strides, **kw_args)
+                         strides=init_strides, 
+                         with_bn=shortcut_with_bn, **kw_args)
 
     return f
 
 
-def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True, **kw_args):
+def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True, 
+                   shortcut_with_bn=False, **kw_args):
     def f(input):
         conv_1_1 = _conv_bn_relu(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv_1_1)
         residual = _conv_bn_relu(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
-                         strides=init_strides, **kw_args)
+                         strides=init_strides, 
+                         with_bn=shortcut_with_bn, **kw_args)
 
     return f
 
@@ -158,7 +171,8 @@ class ResNetBuilder(object):
     def _shared_conv_layers(input_shape, block_fn, repetitions, nb_init_filter=64,
                             init_filter_size=7, init_conv_stride=2, pool_size=3,
                             pool_stride=2,
-                            weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0):
+                            weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0,
+                            shortcut_with_bn=False):
         '''Create shared conv layers for all inputs
         Args:
             pool_size ([int]): set to 0 or False to turn off the first max pooling.
@@ -190,6 +204,7 @@ class ResNetBuilder(object):
         for i, r in enumerate(repetitions):
             block = _residual_block(block_fn, nb_filters=nb_filters, repetitions=r, 
                                     is_first_layer=i == 0, 
+                                    shortcut_with_bn=shortcut_with_bn,
                                     weight_decay=weight_decay, 
                                     dropout=hidden_dropout)(block)
             nb_filters *= 2
@@ -223,7 +238,7 @@ class ResNetBuilder(object):
     def build(input_shape, num_outputs, block_fn, repetitions, nb_init_filter=64,
               init_filter_size=7, init_conv_stride=2, pool_size=3, pool_stride=2,
               weight_decay=.0001, alpha=1., l1_ratio=.5, 
-              inp_dropout=.0, hidden_dropout=.0):
+              inp_dropout=.0, hidden_dropout=.0, shortcut_with_bn=False):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: The input shape in the form (nb_channels, nb_rows, nb_cols)
@@ -245,7 +260,8 @@ class ResNetBuilder(object):
             init_conv_stride=init_conv_stride, 
             pool_size=pool_size, pool_stride=pool_stride, 
             weight_decay=weight_decay, 
-            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout, 
+            shortcut_with_bn=shortcut_with_bn)
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
         activation = "softmax" if num_outputs > 1 else "sigmoid"
         dense = Dense(units=num_outputs, kernel_initializer="he_normal", 
@@ -301,28 +317,30 @@ class ResNetBuilder(object):
                         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
                         pool_size=3, pool_stride=2, 
                         weight_decay=.0001, alpha=1., l1_ratio=.5,
-                        inp_dropout=.0, hidden_dropout=.0):
+                        inp_dropout=.0, hidden_dropout=.0, 
+                        shortcut_with_bn=False):
         return cls.build(
             input_shape, num_outputs, bottleneck, [3, 4, 6, 3], 
             nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
             init_conv_stride=init_conv_stride,
             pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
-            hidden_dropout=hidden_dropout)
+            hidden_dropout=hidden_dropout, shortcut_with_bn=shortcut_with_bn)
 
     @classmethod
     def build_resnet_50_org(cls, input_shape, num_outputs, 
                         nb_init_filter=64, init_filter_size=7, init_conv_stride=2, 
                         pool_size=3, pool_stride=2, 
                         weight_decay=.0001, alpha=1., l1_ratio=.5,
-                        inp_dropout=.0, hidden_dropout=.0):
+                        inp_dropout=.0, hidden_dropout=.0, 
+                        shortcut_with_bn=False):
         return cls.build(
             input_shape, num_outputs, bottleneck_org, [3, 4, 6, 3], 
             nb_init_filter=nb_init_filter, init_filter_size=init_filter_size,
             init_conv_stride=init_conv_stride,
             pool_size=pool_size, pool_stride=pool_stride,
             weight_decay=weight_decay, inp_dropout=inp_dropout, 
-            hidden_dropout=hidden_dropout)
+            hidden_dropout=hidden_dropout, shortcut_with_bn=shortcut_with_bn)
 
     @classmethod
     def build_resnet_101(cls, input_shape, num_outputs, 
@@ -416,7 +434,7 @@ class MultiViewResNetBuilder(ResNetBuilder):
     def build(input_shape, num_outputs, block_fn, repetitions, nb_init_filter=64,
               init_filter_size=7, init_conv_stride=2, pool_size=3, pool_stride=2,
               weight_decay=.0001, alpha=1., l1_ratio=.5, 
-              inp_dropout=.0, hidden_dropout=.0):
+              inp_dropout=.0, hidden_dropout=.0, shortcut_with_bn=False):
         """
         Builds a custom ResNet like architecture.
         :param input_shape: Shall be the input shapes for both CC and MLO views.
@@ -439,14 +457,16 @@ class MultiViewResNetBuilder(ResNetBuilder):
             init_conv_stride=init_conv_stride, 
             pool_size=pool_size, pool_stride=pool_stride, 
             weight_decay=weight_decay, 
-            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout,
+            shortcut_with_bn=shortcut_with_bn)
         input_mlo, flatten_mlo = ResNetBuilder._shared_conv_layers(
             input_shape, block_fn, repetitions, 
             nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
             init_conv_stride=init_conv_stride, 
             pool_size=pool_size, pool_stride=pool_stride, 
             weight_decay=weight_decay, 
-            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout)
+            inp_dropout=inp_dropout, hidden_dropout=hidden_dropout,
+            shortcut_with_bn=shortcut_with_bn)
         # Then merge the conv representations of the two views.
         merged_repr = concatenate([flatten_cc, flatten_mlo])
         enet_penalty = ResNetBuilder.l1l2_penalty_reg(alpha, l1_ratio)
