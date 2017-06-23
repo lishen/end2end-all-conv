@@ -123,6 +123,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
                        use_pretrained=True, optim='sgd', init_lr=.01, 
                        top_layer_multiplier=.01, all_layer_multiplier=.0001,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
+                       nb_class=3,
                        pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
                        weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0):
     '''3-stage DL model training
@@ -141,9 +142,9 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         callbacks.append(reduce_lr)
     if auto_batch_balance:
         class_weight = None
-    elif len(class_list) == 2:
+    elif nb_class == 2:
         class_weight = { 0:1.0, 1:pos_cls_weight }
-    elif len(class_list) == 3:
+    elif nb_class == 3:
         class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
     else:
         class_weight = None
@@ -238,6 +239,98 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
             acc_history = np.append(acc_history, hist.history['val_acc'])
         except KeyError:
             pass
+    return model, loss_history, acc_history
+
+
+def do_2stage_training(model, org_model, train_generator, validation_set, 
+                       validation_steps, best_model_out, steps_per_epoch, 
+                       top_layer_nb, nb_epoch=10, all_layer_epochs=0,
+                       optim='sgd', init_lr=.01, all_layer_multiplier=.1,
+                       es_patience=5, lr_patience=2, auto_batch_balance=True, 
+                       nb_class=2,
+                       pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
+                       weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0):
+    '''2-stage DL model training (for whole images)
+    '''
+    # Create callbacks and class weight.
+    early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
+                                   verbose=1)
+    checkpointer = ModelCheckpoint(best_model_out, monitor='val_acc', verbose=1, 
+                                   save_best_only=True)
+    stdout_flush = DMFlush()
+    callbacks = [early_stopping, checkpointer, stdout_flush]
+    if optim == 'sgd':
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, 
+                                      patience=lr_patience, verbose=1)
+        callbacks.append(reduce_lr)
+    if auto_batch_balance:
+        class_weight = None
+    elif nb_class == 2:
+        class_weight = { 0:1.0, 1:pos_cls_weight }
+    elif nb_class == 3:
+        class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
+    else:
+        class_weight = None
+    if nb_worker == 1:
+        pickle_safe = False
+    else:
+        pickle_safe = True
+
+    # Stage 1: train only the top layers.
+    print "Top layer nb =", top_layer_nb
+    for layer in org_model.layers[:top_layer_nb]:
+        layer.trainable = False
+    model.compile(optimizer=create_optimizer(optim, init_lr), 
+                  loss='categorical_crossentropy', metrics=['accuracy'])
+    print "Start training on the top layers only"; sys.stdout.flush()
+    hist = model.fit_generator(
+        train_generator, 
+        steps_per_epoch=steps_per_epoch, 
+        epochs=nb_epoch,
+        class_weight=class_weight,
+        validation_data=validation_set,
+        validation_steps=validation_steps,
+        callbacks=callbacks, 
+        nb_worker=nb_worker, 
+        pickle_safe=pickle_safe,
+        verbose=2)
+    print "Done."
+    try:
+        loss_history = hist.history['val_loss']
+        acc_history = hist.history['val_acc']
+    except KeyError:
+        loss_history = []
+        acc_history = []
+
+    # Stage 2: train all layers.
+    for layer in org_model.layers[:top_layer_nb]:
+        layer.trainable = True
+    dense_layer = org_model.layers[-1]
+    dropout_layer = org_model.layers[-2]
+    dense_layer.kernel_regularizer.l2 = weight_decay2
+    dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
+    dropout_layer.rate = hidden_dropout2
+    model.compile(optimizer=create_optimizer(optim, init_lr*all_layer_multiplier), 
+                  loss='categorical_crossentropy', metrics=['accuracy'])
+    print "Start training on all layers"; sys.stdout.flush()
+    hist = model.fit_generator(
+        train_generator, 
+        steps_per_epoch=steps_per_epoch, 
+        epochs=all_layer_epochs,
+        class_weight=class_weight,
+        validation_data=validation_set,
+        validation_steps=validation_steps,
+        callbacks=callbacks, 
+        nb_worker=nb_worker, 
+        pickle_safe=pickle_safe,
+        verbose=2, initial_epoch=len(loss_history))
+    print "Done."
+    try:
+        loss_history = np.append(loss_history, hist.history['val_loss'])
+        acc_history = np.append(acc_history, hist.history['val_acc'])
+    except KeyError:
+        pass
+
     return model, loss_history, acc_history
 
 

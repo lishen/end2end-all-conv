@@ -1,40 +1,42 @@
 import os, argparse, sys
 import numpy as np
+# from keras.callbacks import (
+#     ReduceLROnPlateau, 
+#     EarlyStopping, 
+#     ModelCheckpoint
+# )
 from keras.models import load_model, Model
 from dm_image import DMImageDataGenerator
 from dm_keras_ext import (
-    get_dl_model,  
+    # get_dl_model,  
     load_dat_ram,
-    do_3stage_training,
+    do_2stage_training,
     DMFlush
 )
+from dm_resnet import add_top_layers, bottleneck_org
 from dm_multi_gpu import make_parallel
 import warnings
 import exceptions
 warnings.filterwarnings('ignore', category=exceptions.UserWarning)
 
 
-def run(train_dir, val_dir, test_dir,
-        img_size=[256, 256], img_scale=None, rescale_factor=None,
-        featurewise_center=True, featurewise_mean=59.6, 
-        equalize_hist=True, augmentation=False,
-        class_list=['background', 'malignant', 'benign'],
-        batch_size=64, train_bs_multiplier=.5, nb_epoch=5, 
-        top_layer_epochs=10, all_layer_epochs=20,
+def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
+        img_size=[1152, 896], img_scale=None, rescale_factor=None,
+        featurewise_center=True, featurewise_mean=52.16, 
+        equalize_hist=False, augmentation=True,
+        class_list=['neg', 'pos'],
+        top_depths=[512, 512], top_repetitions=[3, 3], kept_layer_idx=-5,
+        batch_size=64, train_bs_multiplier=.5, 
+        nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
-        net='resnet50', use_pretrained=True,
-        nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
-        pool_size=2, pool_stride=2, 
         weight_decay=.0001, weight_decay2=.0001, bias_multiplier=.1, 
-        alpha=.0001, l1_ratio=.0, 
-        inp_dropout=.0, hidden_dropout=.0, hidden_dropout2=.0, 
+        hidden_dropout=.0, hidden_dropout2=.0, 
         optim='sgd', init_lr=.01, lr_patience=10, es_patience=25,
-        resume_from=None, auto_batch_balance=False, 
-        pos_cls_weight=1.0, neg_cls_weight=1.0,
-        top_layer_nb=None, top_layer_multiplier=.1, all_layer_multiplier=.01,
-        best_model='./modelState/patch_clf.h5',
+        auto_batch_balance=False, pos_cls_weight=1.0, neg_cls_weight=1.0,
+        all_layer_multiplier=.1,
+        best_model='./modelState/image_clf.h5',
         final_model="NOSAVE"):
-    '''Train a deep learning model for patch classifications
+    '''Train a deep learning model for image classifications
     '''
 
     # ======= Environmental variables ======== #
@@ -65,21 +67,20 @@ def run(train_dir, val_dir, test_dir,
         train_imgen.channel_shift_range = 20.  # in pixel intensity values.
 
     # ================= Model creation ============== #
-    model, preprocess_input, top_layer_nb = get_dl_model(
-        net, nb_class=len(class_list), use_pretrained=use_pretrained,
-        resume_from=resume_from, img_size=img_size, top_layer_nb=top_layer_nb,
-        weight_decay=weight_decay, bias_multiplier=bias_multiplier,
-        hidden_dropout=hidden_dropout, 
-        nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
-        init_conv_stride=init_conv_stride, pool_size=pool_size, 
-        pool_stride=pool_stride, alpha=alpha, l1_ratio=l1_ratio, 
-        inp_dropout=inp_dropout)
-    if featurewise_center:
-        preprocess_input = None
-    if gpu_count > 1:
-        model, org_model = make_parallel(model, gpu_count)
+    if resume_from is not None:
+        image_model = load_model(resume_from)
     else:
-        org_model = model
+        patch_model = load_model(patch_model_state)
+        image_model, top_layer_nb = add_top_layers(
+            patch_model, top_depths, top_repetitions, bottleneck_org,
+            kept_layer_idx=kept_layer_idx, nb_class=len(class_list), 
+            shortcut_with_bn=True,
+            last_dropout=hidden_dropout, last_weight_decay=weight_decay,
+            bias_multiplier=bias_multiplier)
+    if gpu_count > 1:
+        image_model, org_model = make_parallel(image_model, gpu_count)
+    else:
+        org_model = image_model
 
     # ============ Train & validation set =============== #
     train_bs = int(batch_size*train_bs_multiplier)
@@ -100,7 +101,7 @@ def run(train_dir, val_dir, test_dir,
         print "Create generator for train set"
         train_generator = train_imgen.flow(
             raw_set[0], raw_set[1], batch_size=train_bs, 
-            auto_batch_balance=auto_batch_balance, preprocess=preprocess_input, 
+            auto_batch_balance=auto_batch_balance, 
             shuffle=True, seed=random_seed)
     else:
         print "Create generator for train set"
@@ -110,7 +111,7 @@ def run(train_dir, val_dir, test_dir,
             equalize_hist=equalize_hist, dup_3_channels=dup_3_channels,
             classes=class_list, class_mode='categorical', 
             auto_batch_balance=auto_batch_balance, batch_size=train_bs, 
-            preprocess=preprocess_input, shuffle=True, seed=random_seed)
+            shuffle=True, seed=random_seed)
 
     print "Create generator for val set"
     validation_set = val_imgen.flow_from_directory(
@@ -118,7 +119,7 @@ def run(train_dir, val_dir, test_dir,
         rescale_factor=rescale_factor,
         equalize_hist=equalize_hist, dup_3_channels=dup_3_channels,
         classes=class_list, class_mode='categorical', 
-        batch_size=batch_size, preprocess=preprocess_input, shuffle=False)
+        batch_size=batch_size, shuffle=False)
     sys.stdout.flush()
     if load_val_ram:
         print "Loading validation set into RAM.",
@@ -127,26 +128,41 @@ def run(train_dir, val_dir, test_dir,
         print "Done."; sys.stdout.flush()
 
     # ==================== Model training ==================== #
-    # Do 3-stage training.
+    # Callbacks and class weight.
+    # early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
+    #                                verbose=1)
+    # checkpointer = ModelCheckpoint(best_model, monitor='val_acc', verbose=1, 
+    #                                save_best_only=True)
+    # stdout_flush = DMFlush()
+    # callbacks = [early_stopping, checkpointer, stdout_flush]
+    # if optim == 'sgd':
+    #     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, 
+    #                                   patience=lr_patience, verbose=1)
+    #     callbacks.append(reduce_lr)
+    # if auto_batch_balance:
+    #     class_weight = None
+    # elif len(class_list) == 2:
+    #     class_weight = { 0:1.0, 1:pos_cls_weight }
+    # elif len(class_list) == 3:
+    #     class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
+    # else:
+    #     class_weight = None
+    # Do 2-stage training.
     train_batches = int(train_generator.nb_sample/train_bs) + 1
     if isinstance(validation_set, tuple):
         val_samples = len(validation_set[0])
     else:
         val_samples = validation_set.nb_sample
     validation_steps = int(val_samples/batch_size)
-    #### DEBUG ####
-    # val_samples = 100
-    #### DEBUG ####
     # import pdb; pdb.set_trace()
-    model, loss_hist, acc_hist = do_3stage_training(
-        model, org_model, train_generator, validation_set, validation_steps, 
-        best_model, train_batches, top_layer_nb, net, nb_epoch=nb_epoch,
-        top_layer_epochs=top_layer_epochs, all_layer_epochs=all_layer_epochs,
-        use_pretrained=use_pretrained, optim=optim, init_lr=init_lr, 
-        top_layer_multiplier=top_layer_multiplier, 
+    image_model, loss_hist, acc_hist = do_2stage_training(
+        image_model, org_model, train_generator, validation_set, validation_steps, 
+        best_model, train_batches, top_layer_nb, nb_epoch=nb_epoch,
+        all_layer_epochs=all_layer_epochs,
+        optim=optim, init_lr=init_lr, 
         all_layer_multiplier=all_layer_multiplier,
         es_patience=es_patience, lr_patience=lr_patience, 
-        auto_batch_balance=auto_batch_balance, nb_class=len(class_list),
+        auto_batch_balance=auto_batch_balance, 
         pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
         nb_worker=nb_worker, weight_decay2=weight_decay2, 
         bias_multiplier=bias_multiplier, hidden_dropout2=hidden_dropout2)
@@ -162,7 +178,7 @@ def run(train_dir, val_dir, test_dir,
         print "Best val accuracy:", best_val_accuracy
 
     if final_model != "NOSAVE":
-        model.save(final_model)
+        image_model.save(final_model)
 
     # ==== Predict on test set ==== #
     print "\n==== Predicting on test set ===="
@@ -171,17 +187,14 @@ def run(train_dir, val_dir, test_dir,
         rescale_factor=rescale_factor,
         equalize_hist=equalize_hist, dup_3_channels=dup_3_channels, 
         classes=class_list, class_mode='categorical', batch_size=batch_size, 
-        preprocess=preprocess_input, shuffle=False)
+        shuffle=False)
     print "Test samples =", test_generator.nb_sample
     print "Load saved best model:", best_model + '.',
     sys.stdout.flush()
     org_model.load_weights(best_model)
     print "Done."
     test_steps = int(test_generator.nb_sample/batch_size)
-    #### DEBUG ####
-    # test_samples = 10
-    #### DEBUG ####
-    test_res = model.evaluate_generator(
+    test_res = image_model.evaluate_generator(
         test_generator, test_steps, nb_worker=nb_worker, 
         pickle_safe=True if nb_worker > 1 else False)
     print "Evaluation result on test set:", test_res
@@ -189,12 +202,14 @@ def run(train_dir, val_dir, test_dir,
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="DM patch clf training")
+    parser = argparse.ArgumentParser(description="DM image clf training")
     parser.add_argument("train_dir", type=str)
     parser.add_argument("val_dir", type=str)
     parser.add_argument("test_dir", type=str)
-    parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, 
-                        default=[256, 256])
+    parser.add_argument("--patch-model-state", dest="patch_model_state", type=str, default=None)
+    parser.add_argument("--resume-from", dest="resume_from", type=str, default=None)
+    parser.add_argument("--no-resume-from", dest="resume_from", action="store_const", const=None)
+    parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, default=[1152, 896])
     parser.add_argument("--img-scale", "-ic", dest="img_scale", type=float, default=None)
     parser.add_argument("--no-img-scale", "-nic", dest="img_scale", action="store_const", const=None)
     parser.add_argument("--rescale-factor", dest="rescale_factor", type=float, default=None)
@@ -202,19 +217,22 @@ if __name__ == '__main__':
     parser.add_argument("--featurewise-center", dest="featurewise_center", action="store_true")
     parser.add_argument("--no-featurewise-center", dest="featurewise_center", action="store_false")
     parser.set_defaults(featurewise_center=True)
-    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=59.6)
+    parser.add_argument("--featurewise-mean", dest="featurewise_mean", type=float, default=52.16)
     parser.add_argument("--equalize-hist", dest="equalize_hist", action="store_true")
     parser.add_argument("--no-equalize-hist", dest="equalize_hist", action="store_false")
-    parser.set_defaults(equalize_hist=True)
+    parser.set_defaults(equalize_hist=False)
     parser.add_argument("--batch-size", "-bs", dest="batch_size", type=int, default=64)
     parser.add_argument("--train-bs-multiplier", dest="train_bs_multiplier", type=float, default=.5)
     parser.add_argument("--augmentation", dest="augmentation", action="store_true")
     parser.add_argument("--no-augmentation", dest="augmentation", action="store_false")
-    parser.set_defaults(augmentation=False)
+    parser.set_defaults(augmentation=True)
     parser.add_argument("--class-list", dest="class_list", nargs='+', type=str, 
-                        default=['background', 'malignant', 'benign'])
+                        default=['neg', 'pos'])
+    parser.add_argument("--top-depths", dest="top_depths", nargs='+', type=int, default=[512, 512])
+    parser.add_argument("--top-repetitions", dest="top_repetitions", nargs='+', type=int, 
+                        default=[3, 3])
+    parser.add_argument("--kept-layer-idx", dest="kept_layer_idx", type=int, default=-5)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=5)
-    parser.add_argument("--top-layer-epochs", dest="top_layer_epochs", type=int, default=10)
     parser.add_argument("--all-layer-epochs", dest="all_layer_epochs", type=int, default=20)
     parser.add_argument("--load-val-ram", dest="load_val_ram", action="store_true")
     parser.add_argument("--no-load-val-ram", dest="load_val_ram", action="store_false")
@@ -222,45 +240,32 @@ if __name__ == '__main__':
     parser.add_argument("--load-train-ram", dest="load_train_ram", action="store_true")
     parser.add_argument("--no-load-train-ram", dest="load_train_ram", action="store_false")
     parser.set_defaults(load_train_ram=False)
-    parser.add_argument("--net", dest="net", type=str, default="resnet50")
-    parser.add_argument("--nb-init-filter", "-nif", dest="nb_init_filter", type=int, default=32)
-    parser.add_argument("--init-filter-size", "-ifs", dest="init_filter_size", type=int, default=5)
-    parser.add_argument("--init-conv-stride", "-ics", dest="init_conv_stride", type=int, default=2)
-    parser.add_argument("--max-pooling-size", "-mps", dest="pool_size", type=int, default=2)
-    parser.add_argument("--max-pooling-stride", "-mpr", dest="pool_stride", type=int, default=2)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", type=float, default=.0001)
     parser.add_argument("--weight-decay2", "-wd2", dest="weight_decay2", type=float, default=.0001)
     parser.add_argument("--bias-multiplier", dest="bias_multiplier", type=float, default=.1)
-    parser.add_argument("--alpha", dest="alpha", type=float, default=.0001)
-    parser.add_argument("--l1-ratio", dest="l1_ratio", type=float, default=.0)
-    parser.add_argument("--inp-dropout", "-id", dest="inp_dropout", type=float, default=.0)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--hidden-dropout2", "-hd2", dest="hidden_dropout2", type=float, default=.0)
     parser.add_argument("--optimizer", dest="optim", type=str, default="sgd")
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=10)
     parser.add_argument("--es-patience", "-esp", dest="es_patience", type=int, default=25)
-    parser.add_argument("--resume-from", dest="resume_from", type=str, default=None)
-    parser.add_argument("--no-resume-from", dest="resume_from", action="store_const", const=None)
     parser.add_argument("--auto-batch-balance", dest="auto_batch_balance", action="store_true")
     parser.add_argument("--no-auto-batch-balance", dest="auto_batch_balance", action="store_false")
-    parser.set_defaults(auto_batch_balance=False)
+    parser.set_defaults(auto_batch_balance=True)
     parser.add_argument("--pos-cls-weight", dest="pos_cls_weight", type=float, default=1.0)
     parser.add_argument("--neg-cls-weight", dest="neg_cls_weight", type=float, default=1.0)
-    parser.add_argument("--use-pretrained", dest="use_pretrained", action="store_true")
-    parser.add_argument("--no-use-pretrained", dest="use_pretrained", action="store_false")
-    parser.set_defaults(use_pretrained=True)
-    parser.add_argument("--top-layer-nb", dest="top_layer_nb", type=int, default=None)
-    parser.add_argument("--no-top-layer-nb", dest="top_layer_nb", action="store_const", const=None)
-    parser.add_argument("--top-layer-multiplier", dest="top_layer_multiplier", type=float, default=.1)
-    parser.add_argument("--all-layer-multiplier", dest="all_layer_multiplier", type=float, default=.01)
+    parser.add_argument("--all-layer-multiplier", dest="all_layer_multiplier", type=float, default=.1)
     parser.add_argument("--best-model", "-bm", dest="best_model", type=str, 
-                        default="./modelState/patch_clf.h5")
+                        default="./modelState/image_clf.h5")
     parser.add_argument("--final-model", "-fm", dest="final_model", type=str, 
                         default="NOSAVE")
 
     args = parser.parse_args()
+    if args.patch_model_state is None and args.resume_from is None:
+        raise Exception('One of [patch_model_state, resume_from] must not be None.')
     run_opts = dict(
+        patch_model_state=args.patch_model_state,
+        resume_from=args.resume_from,
         img_size=args.img_size, 
         img_scale=args.img_scale, 
         rescale_factor=args.rescale_factor,
@@ -271,36 +276,25 @@ if __name__ == '__main__':
         train_bs_multiplier=args.train_bs_multiplier,
         augmentation=args.augmentation,
         class_list=args.class_list,
+        top_depths=args.top_depths,
+        top_repetitions=args.top_repetitions,
+        kept_layer_idx=args.kept_layer_idx,
         nb_epoch=args.nb_epoch, 
-        top_layer_epochs=args.top_layer_epochs,
         all_layer_epochs=args.all_layer_epochs,
         load_val_ram=args.load_val_ram,
         load_train_ram=args.load_train_ram,
-        net=args.net,
-        nb_init_filter=args.nb_init_filter, 
-        init_filter_size=args.init_filter_size, 
-        init_conv_stride=args.init_conv_stride, 
-        pool_size=args.pool_size, 
-        pool_stride=args.pool_stride, 
         weight_decay=args.weight_decay,
         weight_decay2=args.weight_decay2,
         bias_multiplier=args.bias_multiplier,
-        alpha=args.alpha,
-        l1_ratio=args.l1_ratio,
-        inp_dropout=args.inp_dropout,
         hidden_dropout=args.hidden_dropout,
         hidden_dropout2=args.hidden_dropout2,
         optim=args.optim,
         init_lr=args.init_lr,
         lr_patience=args.lr_patience, 
         es_patience=args.es_patience,
-        resume_from=args.resume_from,
         auto_batch_balance=args.auto_batch_balance,
         pos_cls_weight=args.pos_cls_weight,
         neg_cls_weight=args.neg_cls_weight,
-        use_pretrained=args.use_pretrained,
-        top_layer_nb=args.top_layer_nb,
-        top_layer_multiplier=args.top_layer_multiplier,
         all_layer_multiplier=args.all_layer_multiplier,
         best_model=args.best_model,        
         final_model=args.final_model        

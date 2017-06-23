@@ -169,6 +169,34 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
     return f
 
 
+def add_top_layers(model, depths, repetitions, block_fn, 
+                   kept_layer_idx=-5, nb_class=2, shortcut_with_bn=True,
+                   last_dropout=.0, last_weight_decay=.0001, bias_multiplier=.1):
+    last_kept_layer = model.layers[kept_layer_idx]
+    for i,layer in enumerate(model.layers):
+        if layer.name == last_kept_layer.name:
+            top_layer_nb = i + 1
+            break
+    else:
+        raise Exception('Top layer number undetermined.')
+    # Change pretrained layer names to avoid conflicts.
+    for layer in model.layers:
+        layer.name = 'prt_' + layer.name
+    block = last_kept_layer.output
+    for depth,repetition in zip(depths, repetitions):
+        block = _residual_block(block_fn, depth, repetition, 
+                                shortcut_with_bn=shortcut_with_bn)(block)
+    pool = GlobalAveragePooling2D()(block)
+    dropout = Dropout(last_dropout)(pool)
+    dense = Dense(nb_class, kernel_initializer="he_normal", 
+                  activation='softmax', 
+                  kernel_regularizer=l2(last_weight_decay),
+                  bias_regularizer=l2(last_weight_decay*bias_multiplier))(dropout)
+    model_addtop = Model(inputs=model.inputs, outputs=dense)
+
+    return model_addtop, top_layer_nb
+
+
 class ResNetBuilder(object):
 
     @staticmethod
