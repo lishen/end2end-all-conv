@@ -1,10 +1,5 @@
 import os, argparse, sys
 import numpy as np
-from keras.callbacks import (
-    ReduceLROnPlateau, 
-    EarlyStopping, 
-    ModelCheckpoint
-)
 from keras.models import load_model, Model
 from dm_image import DMImageDataGenerator
 from dm_keras_ext import (
@@ -132,31 +127,8 @@ def run(train_dir, val_dir, test_dir,
         print "Done."; sys.stdout.flush()
 
     # ==================== Model training ==================== #
-    # Callbacks and class weight.
-    early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
-                                   verbose=1)
-    checkpointer = ModelCheckpoint(best_model, monitor='val_acc', verbose=1, 
-                                   save_best_only=True)
-    stdout_flush = DMFlush()
-    callbacks = [early_stopping, checkpointer, stdout_flush]
-    if optim == 'sgd':
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, 
-                                      patience=lr_patience, verbose=1)
-        callbacks.append(reduce_lr)
-    if auto_batch_balance:
-        class_weight = None
-    elif len(class_list) == 2:
-        class_weight = { 0:1.0, 1:pos_cls_weight }
-    elif len(class_list) == 3:
-        class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
-    else:
-        class_weight = None
     # Do 3-stage training.
     train_batches = int(train_generator.nb_sample/train_bs) + 1
-    samples_per_epoch = train_bs*train_batches
-    #### DEBUG ####
-    # samples_per_epoch = train_bs*10
-    #### DEBUG ####
     if isinstance(validation_set, tuple):
         val_samples = len(validation_set[0])
     else:
