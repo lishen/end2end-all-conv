@@ -249,14 +249,18 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
                        nb_class=2,
                        pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
-                       weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0):
+                       weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0,
+                       auc_checkpointer=None):
     '''2-stage DL model training (for whole images)
     '''
     # Create callbacks and class weight.
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
                                    verbose=1)
-    checkpointer = ModelCheckpoint(best_model_out, monitor='val_acc', verbose=1, 
-                                   save_best_only=True)
+    if auc_checkpointer is None:
+        checkpointer = ModelCheckpoint(
+            best_model_out, monitor='val_acc', verbose=1, save_best_only=True)
+    else:
+        checkpointer = auc_checkpointer
     stdout_flush = DMFlush()
     callbacks = [early_stopping, checkpointer, stdout_flush]
     if optim == 'sgd':
@@ -430,8 +434,11 @@ class DMAucModelCheckpoint(Callback):
                     sample_weight=sample_weight)
             except ValueError:
                 non_bkg_auc_neg = .0
-            # import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if isinstance(auc, float):
+            print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+        elif len(auc) == 2:
+            auc = auc[1]
             print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
         elif len(auc) == 3:
             print " - Epoch:%d, AUROC: bkg - %.4f, pos - %.4f, neg - %.4f" \

@@ -1,17 +1,12 @@
 import os, argparse, sys
 import numpy as np
-# from keras.callbacks import (
-#     ReduceLROnPlateau, 
-#     EarlyStopping, 
-#     ModelCheckpoint
-# )
 from keras.models import load_model, Model
 from dm_image import DMImageDataGenerator
 from dm_keras_ext import (
-    # get_dl_model,  
     load_dat_ram,
     do_2stage_training,
-    DMFlush
+    DMFlush,
+    DMAucModelCheckpoint
 )
 from dm_resnet import add_top_layers, bottleneck_org
 from dm_multi_gpu import make_parallel
@@ -128,25 +123,6 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         print "Done."; sys.stdout.flush()
 
     # ==================== Model training ==================== #
-    # Callbacks and class weight.
-    # early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
-    #                                verbose=1)
-    # checkpointer = ModelCheckpoint(best_model, monitor='val_acc', verbose=1, 
-    #                                save_best_only=True)
-    # stdout_flush = DMFlush()
-    # callbacks = [early_stopping, checkpointer, stdout_flush]
-    # if optim == 'sgd':
-    #     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, 
-    #                                   patience=lr_patience, verbose=1)
-    #     callbacks.append(reduce_lr)
-    # if auto_batch_balance:
-    #     class_weight = None
-    # elif len(class_list) == 2:
-    #     class_weight = { 0:1.0, 1:pos_cls_weight }
-    # elif len(class_list) == 3:
-    #     class_weight = { 0:1.0, 1:pos_cls_weight, 2:neg_cls_weight }
-    # else:
-    #     class_weight = None
     # Do 2-stage training.
     train_batches = int(train_generator.nb_sample/train_bs) + 1
     if isinstance(validation_set, tuple):
@@ -154,6 +130,17 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
     else:
         val_samples = validation_set.nb_sample
     validation_steps = int(val_samples/batch_size)
+    #### DEBUG ####
+    # train_batches = 2
+    # val_samples = batch_size
+    # validation_steps = 1
+    #### DEBUG ####
+    if load_val_ram:
+        auc_checkpointer = DMAucModelCheckpoint(
+            best_model, validation_set, batch_size=batch_size)
+    else:
+        auc_checkpointer = DMAucModelCheckpoint(
+            best_model, validation_set, nb_test_samples=val_samples)
     # import pdb; pdb.set_trace()
     image_model, loss_hist, acc_hist = do_2stage_training(
         image_model, org_model, train_generator, validation_set, validation_steps, 
@@ -165,7 +152,8 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         auto_batch_balance=auto_batch_balance, 
         pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
         nb_worker=nb_worker, weight_decay2=weight_decay2, 
-        bias_multiplier=bias_multiplier, hidden_dropout2=hidden_dropout2)
+        bias_multiplier=bias_multiplier, hidden_dropout2=hidden_dropout2,
+        auc_checkpointer=auc_checkpointer)
 
     # Training report.
     if len(loss_hist) > 0:
@@ -194,6 +182,9 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
     org_model.load_weights(best_model)
     print "Done."
     test_steps = int(test_generator.nb_sample/batch_size)
+    #### DEBUG ####
+    # test_steps = 1
+    #### DEBUG ####
     test_res = image_model.evaluate_generator(
         test_generator, test_steps, nb_worker=nb_worker, 
         pickle_safe=True if nb_worker > 1 else False)
