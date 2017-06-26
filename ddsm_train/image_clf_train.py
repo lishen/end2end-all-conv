@@ -21,6 +21,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         equalize_hist=False, augmentation=True,
         class_list=['neg', 'pos'],
         top_depths=[512, 512], top_repetitions=[3, 3], kept_layer_idx=-5,
+        bottleneck_enlarge_factor=4,
         batch_size=64, train_bs_multiplier=.5, 
         nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
@@ -69,7 +70,8 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         image_model, top_layer_nb = add_top_layers(
             patch_model, top_depths, top_repetitions, bottleneck_org,
             kept_layer_idx=kept_layer_idx, nb_class=len(class_list), 
-            shortcut_with_bn=True,
+            shortcut_with_bn=True, 
+            bottleneck_enlarge_factor=bottleneck_enlarge_factor,
             last_dropout=hidden_dropout, last_weight_decay=weight_decay,
             bias_multiplier=bias_multiplier)
     if gpu_count > 1:
@@ -223,6 +225,8 @@ if __name__ == '__main__':
     parser.add_argument("--top-repetitions", dest="top_repetitions", nargs='+', type=int, 
                         default=[3, 3])
     parser.add_argument("--kept-layer-idx", dest="kept_layer_idx", type=int, default=-5)
+    parser.add_argument("--bottleneck-enlarge-factor", dest="bottleneck_enlarge_factor", 
+                        type=int, default=4)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=5)
     parser.add_argument("--all-layer-epochs", dest="all_layer_epochs", type=int, default=20)
     parser.add_argument("--load-val-ram", dest="load_val_ram", action="store_true")
@@ -270,6 +274,7 @@ if __name__ == '__main__':
         top_depths=args.top_depths,
         top_repetitions=args.top_repetitions,
         kept_layer_idx=args.kept_layer_idx,
+        bottleneck_enlarge_factor=args.bottleneck_enlarge_factor,
         nb_epoch=args.nb_epoch, 
         all_layer_epochs=args.all_layer_epochs,
         load_val_ram=args.load_val_ram,

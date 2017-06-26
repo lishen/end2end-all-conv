@@ -94,7 +94,8 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True,
 
 # Builds a residual block with repeating bottleneck blocks.
 def _residual_block(block_function, nb_filters, repetitions, 
-                    is_first_layer=False, shortcut_with_bn=False, **kw_args):
+                    is_first_layer=False, shortcut_with_bn=False, 
+                    bottleneck_enlarge_factor=4, **kw_args):
     def f(input):
         for i in range(repetitions):
             init_strides = (1, 1)
@@ -106,7 +107,8 @@ def _residual_block(block_function, nb_filters, repetitions,
             input = block_function(nb_filters=nb_filters, 
                                    init_strides=init_strides, 
                                    identity=identity, 
-                                   shortcut_with_bn=shortcut_with_bn, 
+                                   shortcut_with_bn=shortcut_with_bn,
+                                   enlarge_factor=bottleneck_enlarge_factor,
                                    **kw_args)(input)
         return input
 
@@ -117,7 +119,7 @@ def _residual_block(block_function, nb_filters, repetitions,
 # Use for resnet with layers <= 34
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 def basic_block(nb_filters, init_strides=(1, 1), identity=True, 
-                shortcut_with_bn=False, **kw_args):
+                shortcut_with_bn=False, enlarge_factor=None, **kw_args):
     def f(input):
         conv1 = _bn_relu_conv(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv1)
@@ -129,7 +131,7 @@ def basic_block(nb_filters, init_strides=(1, 1), identity=True,
 
 
 def basic_block_org(nb_filters, init_strides=(1, 1), identity=True, 
-                    shortcut_with_bn=False, **kw_args):
+                    shortcut_with_bn=False, enlarge_factor=None, **kw_args):
     def f(input):
         conv1 = _conv_bn_relu(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
         residual = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv1)
@@ -144,11 +146,11 @@ def basic_block_org(nb_filters, init_strides=(1, 1), identity=True,
 # Follows improved proposed scheme in http://arxiv.org/pdf/1603.05027v2.pdf
 # Returns a final conv layer of nb_filters * 4
 def bottleneck(nb_filters, init_strides=(1, 1), identity=True, 
-               shortcut_with_bn=False, **kw_args):
+               shortcut_with_bn=False, enlarge_factor=4, **kw_args):
     def f(input):
         conv_1_1 = _bn_relu_conv(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _bn_relu_conv(nb_filters, 3, 3, **kw_args)(conv_1_1)
-        residual = _bn_relu_conv(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
+        residual = _bn_relu_conv(nb_filters * enlarge_factor, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
                          with_bn=shortcut_with_bn, **kw_args)
@@ -157,11 +159,11 @@ def bottleneck(nb_filters, init_strides=(1, 1), identity=True,
 
 
 def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True, 
-                   shortcut_with_bn=False, **kw_args):
+                   shortcut_with_bn=False, enlarge_factor=4, **kw_args):
     def f(input):
         conv_1_1 = _conv_bn_relu(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv_1_1)
-        residual = _conv_bn_relu(nb_filters * 4, 1, 1, **kw_args)(conv_3_3)
+        residual = _conv_bn_relu(nb_filters * enlarge_factor, 1, 1, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
                          with_bn=shortcut_with_bn, org=True, **kw_args)
@@ -171,6 +173,7 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
 
 def add_top_layers(model, depths, repetitions, block_fn, 
                    kept_layer_idx=-5, nb_class=2, shortcut_with_bn=True,
+                   bottleneck_enlarge_factor=4,
                    last_dropout=.0, last_weight_decay=.0001, bias_multiplier=.1):
     last_kept_layer = model.layers[kept_layer_idx]
     for i,layer in enumerate(model.layers):
@@ -184,8 +187,10 @@ def add_top_layers(model, depths, repetitions, block_fn,
         layer.name = 'prt_' + layer.name
     block = last_kept_layer.output
     for depth,repetition in zip(depths, repetitions):
-        block = _residual_block(block_fn, depth, repetition, 
-                                shortcut_with_bn=shortcut_with_bn)(block)
+        block = _residual_block(
+            block_fn, depth, repetition,
+            shortcut_with_bn=shortcut_with_bn,
+            bottleneck_enlarge_factor=bottleneck_enlarge_factor)(block)
     pool = GlobalAveragePooling2D()(block)
     dropout = Dropout(last_dropout)(pool)
     dense = Dense(nb_class, kernel_initializer="he_normal", 
@@ -204,7 +209,8 @@ class ResNetBuilder(object):
                             init_filter_size=7, init_conv_stride=2, pool_size=3,
                             pool_stride=2,
                             weight_decay=.0001, inp_dropout=.0, hidden_dropout=.0,
-                            shortcut_with_bn=False):
+                            shortcut_with_bn=False, 
+                            bottleneck_enlarge_factor=4):
         '''Create shared conv layers for all inputs
         Args:
             pool_size ([int]): set to 0 or False to turn off the first max pooling.
@@ -234,18 +240,16 @@ class ResNetBuilder(object):
 
         nb_filters = nb_init_filter
         for i, r in enumerate(repetitions):
-            block = _residual_block(block_fn, nb_filters=nb_filters, repetitions=r, 
-                                    is_first_layer=i == 0, 
-                                    shortcut_with_bn=shortcut_with_bn,
-                                    weight_decay=weight_decay, 
-                                    dropout=hidden_dropout)(block)
+            block = _residual_block(
+                block_fn, nb_filters=nb_filters, repetitions=r, 
+                is_first_layer=(i == 0), 
+                shortcut_with_bn=shortcut_with_bn,
+                bottleneck_enlarge_factor=bottleneck_enlarge_factor,
+                weight_decay=weight_decay, 
+                dropout=hidden_dropout)(block)
             nb_filters *= 2
 
         # Classifier block
-        # pool2 = AveragePooling2D(pool_size=(block._keras_shape[ROW_AXIS],
-        #                                     block._keras_shape[COL_AXIS]),
-        #                          strides=(1, 1))(block)
-        # flatten1 = Flatten()(pool2)
         pool2 = GlobalAveragePooling2D()(block)
 
         return input_, pool2
