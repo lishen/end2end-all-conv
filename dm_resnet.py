@@ -34,14 +34,17 @@ else:
 
 # Helper to build a conv -> BN -> relu block
 def _conv_bn_relu(nb_filter, nb_row, nb_col, strides=(1, 1), 
-                  weight_decay=.0001, dropout=.0):
+                  weight_decay=.0001, dropout=.0, last_block=False):
     def f(input):
         conv = Conv2D(filters=nb_filter, kernel_size=(nb_row, nb_col), 
                       strides=strides, kernel_initializer="he_normal", 
                       padding="same", kernel_regularizer=l2(weight_decay))(input)
         norm = BatchNormalization(axis=CHANNEL_AXIS)(conv)
-        relu = Activation("relu")(norm)
-        return Dropout(dropout)(relu)
+        if last_block:
+            return norm
+        else:
+            relu = Activation("relu")(norm)
+            return Dropout(dropout)(relu)
 
     return f
 
@@ -89,7 +92,8 @@ def _shortcut(input, residual, weight_decay=.0001, dropout=.0, identity=True,
     if not org:
         return addition
     else:
-        return Activation("relu")(addition)
+        relu = Activation("relu")(addition)
+        return Dropout(dropout)(relu)
 
 
 # Builds a residual block with repeating bottleneck blocks.
@@ -134,7 +138,7 @@ def basic_block_org(nb_filters, init_strides=(1, 1), identity=True,
                     shortcut_with_bn=False, enlarge_factor=None, **kw_args):
     def f(input):
         conv1 = _conv_bn_relu(nb_filters, 3, 3, strides=init_strides, **kw_args)(input)
-        residual = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv1)
+        residual = _conv_bn_relu(nb_filters, 3, 3, last_block=True, **kw_args)(conv1)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
                          with_bn=shortcut_with_bn, org=True, **kw_args)
@@ -163,7 +167,8 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
     def f(input):
         conv_1_1 = _conv_bn_relu(nb_filters, 1, 1, strides=init_strides, **kw_args)(input)
         conv_3_3 = _conv_bn_relu(nb_filters, 3, 3, **kw_args)(conv_1_1)
-        residual = _conv_bn_relu(nb_filters * enlarge_factor, 1, 1, **kw_args)(conv_3_3)
+        residual = _conv_bn_relu(nb_filters * enlarge_factor, 1, 1, 
+                                 last_block=True, **kw_args)(conv_3_3)
         return _shortcut(input, residual, identity=identity, 
                          strides=init_strides, 
                          with_bn=shortcut_with_bn, org=True, **kw_args)
