@@ -132,16 +132,16 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         val_samples = validation_set.nb_sample
     validation_steps = int(val_samples/batch_size)
     #### DEBUG ####
-    # train_batches = 2
-    # val_samples = batch_size
-    # validation_steps = 1
+    # train_batches = 1
+    # val_samples = batch_size*5
+    # validation_steps = 5
     #### DEBUG ####
     if load_val_ram:
         auc_checkpointer = DMAucModelCheckpoint(
             best_model, validation_set, batch_size=batch_size)
     else:
         auc_checkpointer = DMAucModelCheckpoint(
-            best_model, validation_set, nb_test_samples=val_samples)
+            best_model, validation_set, test_samples=val_samples)
     # import pdb; pdb.set_trace()
     image_model, loss_hist, acc_hist = do_2stage_training(
         image_model, org_model, train_generator, validation_set, validation_steps, 
@@ -175,19 +175,22 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         equalize_hist=equalize_hist, dup_3_channels=dup_3_channels, 
         classes=class_list, class_mode='categorical', batch_size=batch_size, 
         shuffle=False)
-    print "Test samples =", test_generator.nb_sample
+    test_samples = test_generator.nb_sample
+    #### DEBUG ####
+    # test_samples = 5
+    #### DEBUG ####
+    print "Test samples =", test_samples
     print "Load saved best model:", best_model + '.',
     sys.stdout.flush()
     org_model.load_weights(best_model)
     print "Done."
-    test_steps = int(test_generator.nb_sample/batch_size)
-    #### DEBUG ####
-    # test_steps = 1
-    #### DEBUG ####
-    test_res = image_model.evaluate_generator(
-        test_generator, test_steps, nb_worker=nb_worker, 
-        pickle_safe=True if nb_worker > 1 else False)
-    print "Evaluation result on test set:", test_res
+    # test_steps = int(test_generator.nb_sample/batch_size)
+    # test_res = image_model.evaluate_generator(
+    #     test_generator, test_steps, nb_worker=nb_worker, 
+    #     pickle_safe=True if nb_worker > 1 else False)
+    test_auc = DMAucModelCheckpoint.calc_test_auc(
+        test_generator, image_model, test_samples=test_samples)
+    print "AUROC on test set:", test_auc
 
 
 if __name__ == '__main__':
