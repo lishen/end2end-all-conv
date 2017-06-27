@@ -249,7 +249,6 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
                        nb_class=2,
                        pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
-                       weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0,
                        auc_checkpointer=None):
     '''2-stage DL model training (for whole images)
     '''
@@ -309,11 +308,6 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
     # Stage 2: train all layers.
     for layer in org_model.layers[:top_layer_nb]:
         layer.trainable = True
-    dense_layer = org_model.layers[-1]
-    dropout_layer = org_model.layers[-2]
-    dense_layer.kernel_regularizer.l2 = weight_decay2
-    dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
-    dropout_layer.rate = hidden_dropout2
     model.compile(optimizer=create_optimizer(optim, init_lr*all_layer_multiplier), 
                   loss='categorical_crossentropy', metrics=['accuracy'])
     print "Start training on all layers"; sys.stdout.flush()
