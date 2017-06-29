@@ -454,10 +454,10 @@ class DMAucModelCheckpoint(Callback):
         #             % (non_bkg_auc_pos, non_bkg_auc_neg)
         # else:
         #     raise Exception("Unknown auc format: " + str(auc))
-        print " - Epoch:%d, AUROC: %.4f" % (epoch + 1, auc)
+        epoch_auc = np.mean(auc)
+        print " - Epoch:%d, AUROC:%s, mean=%.4f" % (epoch + 1, str(auc), epoch_auc)
         sys.stdout.flush()
         # epoch_auc = non_bkg_auc_pos if y_pred.shape[1] == 3 else auc
-        epoch_auc = np.mean(auc)
         if epoch_auc > self.best_auc:
             self.best_epoch = epoch + 1
             self.best_auc = epoch_auc
