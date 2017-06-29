@@ -244,7 +244,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
 
 def do_2stage_training(model, org_model, train_generator, validation_set, 
                        validation_steps, best_model_out, steps_per_epoch, 
-                       top_layer_nb, nb_epoch=10, all_layer_epochs=0,
+                       top_layer_nb=None, nb_epoch=10, all_layer_epochs=0,
                        optim='sgd', init_lr=.01, all_layer_multiplier=.1,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
                        nb_class=2,
@@ -252,6 +252,9 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
                        auc_checkpointer=None):
     '''2-stage DL model training (for whole images)
     '''
+    if top_layer_nb is None and nb_epoch > 0:
+        raise Exception('top_layer_nb must be specified when nb_epoch > 0')
+        
     # Create callbacks and class weight.
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
                                    verbose=1)

@@ -21,7 +21,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         equalize_hist=False, augmentation=True,
         class_list=['neg', 'pos'],
         top_depths=[512, 512], top_repetitions=[3, 3], kept_layer_idx=-5,
-        bottleneck_enlarge_factor=4,
+        bottleneck_enlarge_factor=4, top_layer_nb=None,
         batch_size=64, train_bs_multiplier=.5, 
         nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
@@ -227,6 +227,7 @@ if __name__ == '__main__':
     parser.add_argument("--kept-layer-idx", dest="kept_layer_idx", type=int, default=-5)
     parser.add_argument("--bottleneck-enlarge-factor", dest="bottleneck_enlarge_factor", 
                         type=int, default=4)
+    parser.add_argument("--top-layer-nb", dest="top_layer_nb", type=int, default=None)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=5)
     parser.add_argument("--all-layer-epochs", dest="all_layer_epochs", type=int, default=20)
     parser.add_argument("--load-val-ram", dest="load_val_ram", action="store_true")
@@ -273,6 +274,7 @@ if __name__ == '__main__':
         top_repetitions=args.top_repetitions,
         kept_layer_idx=args.kept_layer_idx,
         bottleneck_enlarge_factor=args.bottleneck_enlarge_factor,
+        top_layer_nb=args.top_layer_nb,
         nb_epoch=args.nb_epoch, 
         all_layer_epochs=args.all_layer_epochs,
         load_val_ram=args.load_val_ram,
