@@ -254,7 +254,7 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
     '''
     if top_layer_nb is None and nb_epoch > 0:
         raise Exception('top_layer_nb must be specified when nb_epoch > 0')
-        
+
     # Create callbacks and class weight.
     early_stopping = EarlyStopping(monitor='val_loss', patience=es_patience, 
                                    verbose=1)
@@ -469,9 +469,12 @@ class DMAucModelCheckpoint(Callback):
                 self.model.save(self.filepath)
 
     def on_train_end(self, logs={}):
-        print "\n>>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
-            (self.best_auc, self.best_epoch, self.filepath)
-        print ">>> AUROC for all cls:", str(self.best_all_auc), "<<<"
+        if self.best_auc >= 0.:
+            print "\n>>> Found best AUROC: %.4f at epoch: %d, saved to: %s <<<" % \
+                (self.best_auc, self.best_epoch, self.filepath)
+            print ">>> AUROC for all cls:", str(self.best_all_auc), "<<<"
+        else:
+            print "\n>>> AUROC was not scored. No model was saved. <<<"
         sys.stdout.flush()
 
 
