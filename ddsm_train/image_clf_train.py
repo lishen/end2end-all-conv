@@ -228,6 +228,7 @@ if __name__ == '__main__':
     parser.add_argument("--bottleneck-enlarge-factor", dest="bottleneck_enlarge_factor", 
                         type=int, default=4)
     parser.add_argument("--top-layer-nb", dest="top_layer_nb", type=int, default=None)
+    parser.add_argument("--no-top-layer-nb", dest="top_layer_nb", action="store_const", const=None)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=5)
     parser.add_argument("--all-layer-epochs", dest="all_layer_epochs", type=int, default=20)
     parser.add_argument("--load-val-ram", dest="load_val_ram", action="store_true")
