@@ -3,6 +3,7 @@ import numpy as np
 from keras.callbacks import Callback
 from keras.models import load_model, Model
 from keras.layers import Flatten, Dense, Dropout, GlobalAveragePooling2D
+from keras.layers.convolutional import Conv2D
 from keras.regularizers import l2
 from keras.optimizers import (
     SGD, RMSprop, Adagrad, Adadelta,
@@ -247,7 +248,9 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
                        nb_class=2,
                        pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
-                       auc_checkpointer=None):
+                       auc_checkpointer=None,
+                       weight_decay=.0001, hidden_dropout=.0,
+                       weight_decay2=.0001, hidden_dropout2=.0):
     '''2-stage DL model training (for whole images)
     '''
     if top_layer_nb is None and nb_epoch > 0:
@@ -284,6 +287,14 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
     print "Top layer nb =", top_layer_nb
     for layer in org_model.layers[:top_layer_nb]:
         layer.trainable = False
+    for layer in org_model.layers:
+        if isinstance(layer, Dense) or isinstance(layer, Conv2D):
+            try:
+                layer.kernel_regularizer.l2 = weight_decay
+            except AttributeError:
+                pass
+        elif isinstance(layer, Dropout):
+            layer.rate = hidden_dropout
     model.compile(optimizer=create_optimizer(optim, init_lr), 
                   loss='categorical_crossentropy', metrics=['accuracy'])
     print "Start training on the top layers only"; sys.stdout.flush()
@@ -309,6 +320,14 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
     # Stage 2: train all layers.
     for layer in org_model.layers[:top_layer_nb]:
         layer.trainable = True
+    for layer in org_model.layers:
+        if isinstance(layer, Dense) or isinstance(layer, Conv2D):
+            try:
+                layer.kernel_regularizer.l2 = weight_decay2
+            except AttributeError:
+                pass
+        elif isinstance(layer, Dropout):
+            layer.rate = hidden_dropout2
     model.compile(optimizer=create_optimizer(optim, init_lr*all_layer_multiplier), 
                   loss='categorical_crossentropy', metrics=['accuracy'])
     print "Start training on all layers"; sys.stdout.flush()

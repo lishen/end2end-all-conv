@@ -25,7 +25,8 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         batch_size=64, train_bs_multiplier=.5, 
         nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
-        weight_decay=.0001, hidden_dropout=.0,  
+        weight_decay=.0001, hidden_dropout=.0, 
+        weight_decay2=.0001, hidden_dropout2=.0, 
         optim='sgd', init_lr=.01, lr_patience=10, es_patience=25,
         auto_batch_balance=False, pos_cls_weight=1.0, neg_cls_weight=1.0,
         all_layer_multiplier=.1,
@@ -151,7 +152,9 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         es_patience=es_patience, lr_patience=lr_patience, 
         auto_batch_balance=auto_batch_balance, 
         pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
-        nb_worker=nb_worker, auc_checkpointer=auc_checkpointer)
+        nb_worker=nb_worker, auc_checkpointer=auc_checkpointer,
+        weight_decay=weight_decay, hidden_dropout=hidden_dropout,
+        weight_decay2=weight_decay2, hidden_dropout2=hidden_dropout2,)
 
     # Training report.
     if len(loss_hist) > 0:
@@ -238,6 +241,8 @@ if __name__ == '__main__':
     parser.set_defaults(load_train_ram=False)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", type=float, default=.0001)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
+    parser.add_argument("--weight-decay2", "-wd2", dest="weight_decay2", type=float, default=.0001)
+    parser.add_argument("--hidden-dropout2", "-hd2", dest="hidden_dropout2", type=float, default=.0)
     parser.add_argument("--optimizer", dest="optim", type=str, default="sgd")
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
     parser.add_argument("--lr-patience", "-lrp", dest="lr_patience", type=int, default=10)
@@ -280,6 +285,8 @@ if __name__ == '__main__':
         load_train_ram=args.load_train_ram,
         weight_decay=args.weight_decay,
         hidden_dropout=args.hidden_dropout,
+        weight_decay2=args.weight_decay2,
+        hidden_dropout2=args.hidden_dropout2,
         optim=args.optim,
         init_lr=args.init_lr,
         lr_patience=args.lr_patience, 
