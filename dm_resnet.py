@@ -179,7 +179,7 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
 def add_top_layers(model, depths, repetitions, block_fn, 
                    kept_layer_idx=-5, nb_class=2, shortcut_with_bn=True,
                    bottleneck_enlarge_factor=4,
-                   dropout=.0, weight_decay=.0001, bias_multiplier=.1):
+                   dropout=.0, weight_decay=.0001):
     last_kept_layer = model.layers[kept_layer_idx]
     for i,layer in enumerate(model.layers):
         if layer.name == last_kept_layer.name:
@@ -201,8 +201,7 @@ def add_top_layers(model, depths, repetitions, block_fn,
     dropped = Dropout(dropout)(pool)
     dense = Dense(nb_class, kernel_initializer="he_normal", 
                   activation='softmax', 
-                  kernel_regularizer=l2(weight_decay),
-                  bias_regularizer=l2(weight_decay*bias_multiplier))(dropped)
+                  kernel_regularizer=l2(weight_decay))(dropped)
     model_addtop = Model(inputs=model.inputs, outputs=dense)
 
     return model_addtop, top_layer_nb

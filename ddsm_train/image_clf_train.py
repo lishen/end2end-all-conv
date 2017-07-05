@@ -25,7 +25,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         batch_size=64, train_bs_multiplier=.5, 
         nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
-        weight_decay=.0001, bias_multiplier=.1, hidden_dropout=.0,  
+        weight_decay=.0001, hidden_dropout=.0,  
         optim='sgd', init_lr=.01, lr_patience=10, es_patience=25,
         auto_batch_balance=False, pos_cls_weight=1.0, neg_cls_weight=1.0,
         all_layer_multiplier=.1,
@@ -71,8 +71,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
             kept_layer_idx=kept_layer_idx, nb_class=len(class_list), 
             shortcut_with_bn=True, 
             bottleneck_enlarge_factor=bottleneck_enlarge_factor,
-            dropout=hidden_dropout, weight_decay=weight_decay,
-            bias_multiplier=bias_multiplier)
+            dropout=hidden_dropout, weight_decay=weight_decay)
     if gpu_count > 1:
         image_model, org_model = make_parallel(image_model, gpu_count)
     else:
@@ -238,7 +237,6 @@ if __name__ == '__main__':
     parser.add_argument("--no-load-train-ram", dest="load_train_ram", action="store_false")
     parser.set_defaults(load_train_ram=False)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", type=float, default=.0001)
-    parser.add_argument("--bias-multiplier", dest="bias_multiplier", type=float, default=.1)
     parser.add_argument("--hidden-dropout", "-hd", dest="hidden_dropout", type=float, default=.0)
     parser.add_argument("--optimizer", dest="optim", type=str, default="sgd")
     parser.add_argument("--init-learningrate", "-ilr", dest="init_lr", type=float, default=.01)
@@ -281,7 +279,6 @@ if __name__ == '__main__':
         load_val_ram=args.load_val_ram,
         load_train_ram=args.load_train_ram,
         weight_decay=args.weight_decay,
-        bias_multiplier=args.bias_multiplier,
         hidden_dropout=args.hidden_dropout,
         optim=args.optim,
         init_lr=args.init_lr,

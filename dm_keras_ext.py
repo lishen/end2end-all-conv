@@ -51,7 +51,7 @@ def load_dat_ram(generator, nb_samples):
 
 def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None, 
                  top_layer_nb=None, weight_decay=.01,
-                 bias_multiplier=.1, hidden_dropout=.0, **kw_args):
+                 hidden_dropout=.0, **kw_args):
     '''Load existing DL model or create it from new
     Args:
         kw_args: keyword arguments for creating resnet.
@@ -89,8 +89,7 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
         if hidden_dropout > 0.:
             x = Dropout(hidden_dropout)(x)
         preds = Dense(nb_class, activation='softmax', 
-                      kernel_regularizer=l2(weight_decay), 
-                      bias_regularizer=l2(weight_decay*bias_multiplier))(x)
+                      kernel_regularizer=l2(weight_decay))(x)
         model = Model(input=base_model.input, output=preds)
         print "Done."
 
@@ -125,7 +124,7 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
                        es_patience=5, lr_patience=2, auto_batch_balance=True, 
                        nb_class=3,
                        pos_cls_weight=1., neg_cls_weight=1., nb_worker=1,
-                       weight_decay2=.01, bias_multiplier=.1, hidden_dropout2=.0):
+                       weight_decay2=.01, hidden_dropout2=.0):
     '''3-stage DL model training
     '''
     # Create callbacks and class weight.
@@ -193,7 +192,6 @@ def do_3stage_training(model, org_model, train_generator, validation_set,
         dense_layer = org_model.layers[-1]
         dropout_layer = org_model.layers[-2]
         dense_layer.kernel_regularizer.l2 = weight_decay2
-        dense_layer.bias_regularizer.l2 = weight_decay2*bias_multiplier
         dropout_layer.rate = hidden_dropout2
         model.compile(optimizer=create_optimizer(optim, init_lr*top_layer_multiplier), 
                       loss='categorical_crossentropy', metrics=['accuracy'])

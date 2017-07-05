@@ -25,7 +25,7 @@ def run(train_dir, val_dir, test_dir,
         net='resnet50', use_pretrained=True,
         nb_init_filter=32, init_filter_size=5, init_conv_stride=2, 
         pool_size=2, pool_stride=2, 
-        weight_decay=.0001, weight_decay2=.0001, bias_multiplier=.1, 
+        weight_decay=.0001, weight_decay2=.0001, 
         alpha=.0001, l1_ratio=.0, 
         inp_dropout=.0, hidden_dropout=.0, hidden_dropout2=.0, 
         optim='sgd', init_lr=.01, lr_patience=10, es_patience=25,
@@ -68,8 +68,7 @@ def run(train_dir, val_dir, test_dir,
     model, preprocess_input, top_layer_nb = get_dl_model(
         net, nb_class=len(class_list), use_pretrained=use_pretrained,
         resume_from=resume_from, img_size=img_size, top_layer_nb=top_layer_nb,
-        weight_decay=weight_decay, bias_multiplier=bias_multiplier,
-        hidden_dropout=hidden_dropout, 
+        weight_decay=weight_decay, hidden_dropout=hidden_dropout, 
         nb_init_filter=nb_init_filter, init_filter_size=init_filter_size, 
         init_conv_stride=init_conv_stride, pool_size=pool_size, 
         pool_stride=pool_stride, alpha=alpha, l1_ratio=l1_ratio, 
@@ -149,7 +148,7 @@ def run(train_dir, val_dir, test_dir,
         auto_batch_balance=auto_batch_balance, nb_class=len(class_list),
         pos_cls_weight=pos_cls_weight, neg_cls_weight=neg_cls_weight,
         nb_worker=nb_worker, weight_decay2=weight_decay2, 
-        bias_multiplier=bias_multiplier, hidden_dropout2=hidden_dropout2)
+        hidden_dropout2=hidden_dropout2)
 
     # Training report.
     if len(loss_hist) > 0:
@@ -230,7 +229,6 @@ if __name__ == '__main__':
     parser.add_argument("--max-pooling-stride", "-mpr", dest="pool_stride", type=int, default=2)
     parser.add_argument("--weight-decay", "-wd", dest="weight_decay", type=float, default=.0001)
     parser.add_argument("--weight-decay2", "-wd2", dest="weight_decay2", type=float, default=.0001)
-    parser.add_argument("--bias-multiplier", dest="bias_multiplier", type=float, default=.1)
     parser.add_argument("--alpha", dest="alpha", type=float, default=.0001)
     parser.add_argument("--l1-ratio", dest="l1_ratio", type=float, default=.0)
     parser.add_argument("--inp-dropout", "-id", dest="inp_dropout", type=float, default=.0)
@@ -284,7 +282,6 @@ if __name__ == '__main__':
         pool_stride=args.pool_stride, 
         weight_decay=args.weight_decay,
         weight_decay2=args.weight_decay2,
-        bias_multiplier=args.bias_multiplier,
         alpha=args.alpha,
         l1_ratio=args.l1_ratio,
         inp_dropout=args.inp_dropout,
