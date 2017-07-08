@@ -21,6 +21,17 @@ from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
 
 
+def robust_load_model(filepath, custom_objects=None):
+    try:
+        model = load_model(filepath, custom_objects=custom_objects)
+    except ValueError:
+        import h5py
+        f = h5py.File(filepath, 'r+')
+        del f['optimizer_weights']
+        f.close()
+        model = load_model(filepath, custom_objects=custom_objects)
+
+
 def load_dat_ram(generator, nb_samples):
     samples_seen = 0
     X_list = []
@@ -285,6 +296,7 @@ def do_2stage_training(model, org_model, train_generator, validation_set,
 
     # Stage 1: train only the top layers.
     print "Top layer nb =", top_layer_nb
+    # import pdb; pdb.set_trace()
     for layer in org_model.layers[:top_layer_nb]:
         layer.trainable = False
     for layer in org_model.layers:
