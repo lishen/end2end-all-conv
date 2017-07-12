@@ -20,8 +20,11 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         featurewise_center=True, featurewise_mean=52.16, 
         equalize_hist=False, augmentation=True,
         class_list=['neg', 'pos'],
-        top_depths=[512, 512], top_repetitions=[3, 3], kept_layer_idx=-5,
-        bottleneck_enlarge_factor=4, top_layer_nb=None,
+        top_depths=[512, 512], top_repetitions=[3, 3], 
+        bottleneck_enlarge_factor=4, 
+        add_heatmap=False, hm_strides=(1,1), hm_pool_size=(5,5),
+        fc_init_units=64, fc_layers=2,
+        top_layer_nb=None,
         batch_size=64, train_bs_multiplier=.5, 
         nb_epoch=5, all_layer_epochs=20,
         load_val_ram=False, load_train_ram=False,
@@ -64,15 +67,17 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
 
     # ================= Model creation ============== #
     if resume_from is not None:
-        image_model = load_model(resume_from)
+        image_model = load_model(resume_from, compile=False)
     else:
-        patch_model = load_model(patch_model_state)
+        patch_model = load_model(patch_model_state, compile=False)
         image_model, top_layer_nb = add_top_layers(
-            patch_model, top_depths, top_repetitions, bottleneck_org,
-            kept_layer_idx=kept_layer_idx, nb_class=len(class_list), 
-            shortcut_with_bn=True, 
+            patch_model, img_size, top_depths, top_repetitions, bottleneck_org,
+            nb_class=len(class_list), shortcut_with_bn=True, 
             bottleneck_enlarge_factor=bottleneck_enlarge_factor,
-            dropout=hidden_dropout, weight_decay=weight_decay)
+            dropout=hidden_dropout, weight_decay=weight_decay,
+            add_heatmap=add_heatmap, hm_strides=hm_strides, 
+            hm_pool_size=hm_pool_size, fc_init_units=fc_init_units,
+            fc_layers=fc_layers)
     if gpu_count > 1:
         image_model, org_model = make_parallel(image_model, gpu_count)
     else:
@@ -226,9 +231,15 @@ if __name__ == '__main__':
     parser.add_argument("--top-depths", dest="top_depths", nargs='+', type=int, default=[512, 512])
     parser.add_argument("--top-repetitions", dest="top_repetitions", nargs='+', type=int, 
                         default=[3, 3])
-    parser.add_argument("--kept-layer-idx", dest="kept_layer_idx", type=int, default=-5)
     parser.add_argument("--bottleneck-enlarge-factor", dest="bottleneck_enlarge_factor", 
                         type=int, default=4)
+    parser.add_argument("--add-heatmap", dest="add_heatmap", action="store_true")
+    parser.add_argument("--no-add-heatmap", dest="add_heatmap", action="store_false")
+    parser.set_defaults(add_heatmap=False)
+    parser.add_argument("--hm-strides", dest="hm_strides", nargs=2, type=int, default=[1, 1])
+    parser.add_argument("--hm-pool-size", dest="hm_pool_size", nargs=2, type=int, default=[5,5])
+    parser.add_argument("--fc-init-units", dest="fc_init_units", type=int, default=64)
+    parser.add_argument("--fc-layers", dest="fc_layers", type=int, default=2)
     parser.add_argument("--top-layer-nb", dest="top_layer_nb", type=int, default=None)
     parser.add_argument("--no-top-layer-nb", dest="top_layer_nb", action="store_const", const=None)
     parser.add_argument("--nb-epoch", "-ne", dest="nb_epoch", type=int, default=5)
@@ -276,8 +287,12 @@ if __name__ == '__main__':
         class_list=args.class_list,
         top_depths=args.top_depths,
         top_repetitions=args.top_repetitions,
-        kept_layer_idx=args.kept_layer_idx,
         bottleneck_enlarge_factor=args.bottleneck_enlarge_factor,
+        add_heatmap=args.add_heatmap,
+        hm_strides=args.hm_strides,
+        hm_pool_size=args.hm_pool_size,
+        fc_init_units=args.fc_init_units,
+        fc_layers=args.fc_layers,
         top_layer_nb=args.top_layer_nb,
         nb_epoch=args.nb_epoch, 
         all_layer_epochs=args.all_layer_epochs,

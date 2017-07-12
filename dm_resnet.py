@@ -12,10 +12,11 @@ from keras.layers.merge import concatenate, add
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import (
     MaxPooling2D,
-    # AveragePooling2D,
+    AveragePooling2D,
     GlobalAveragePooling2D
 )
 from keras.layers.normalization import BatchNormalization
+from keras.layers.core import activations
 from keras.regularizers import l1, l2, l1_l2
 from keras import backend as K
 # import warnings
@@ -176,35 +177,60 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
     return f
 
 
-def add_top_layers(model, depths, repetitions, block_fn, 
-                   kept_layer_idx=-5, nb_class=2, shortcut_with_bn=True,
-                   bottleneck_enlarge_factor=4,
-                   dropout=.0, weight_decay=.0001):
-    last_kept_layer = model.layers[kept_layer_idx]
-    for i,layer in enumerate(model.layers):
-        if layer.name == last_kept_layer.name:
-            top_layer_nb = i + 1
-            break
-    else:
-        raise Exception('Top layer number undetermined.')
-    # Change pretrained layer names to avoid conflicts.
-    for layer in model.layers:
-        layer.name = 'prt_' + layer.name
+def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1], 
+                   block_fn=bottleneck_org, nb_class=2, 
+                   shortcut_with_bn=True, bottleneck_enlarge_factor=4,
+                   dropout=.0, weight_decay=.0001,
+                   add_heatmap=False, hm_strides=(1,1), hm_pool_size=(5,5),
+                   fc_init_units=64, fc_layers=2):
+    last_kept_layer = model.layers[-5]
     block = last_kept_layer.output
-    for depth,repetition in zip(depths, repetitions):
-        block = _residual_block(
-            block_fn, depth, repetition,
-            dropout=dropout, weight_decay=weight_decay,
-            shortcut_with_bn=shortcut_with_bn,
-            bottleneck_enlarge_factor=bottleneck_enlarge_factor)(block)
-    pool = GlobalAveragePooling2D()(block)
-    dropped = Dropout(dropout)(pool)
+    image_input = Input(shape=(image_size[0],image_size[1],3))
+    model0 = Model(inputs=model.inputs, outputs=block)
+    block = model0(image_input)
+    if not add_heatmap:
+        top_layer_nb = 2
+        for depth,repetition in zip(depths, repetitions):
+            block = _residual_block(
+                block_fn, depth, repetition,
+                dropout=dropout, weight_decay=weight_decay,
+                shortcut_with_bn=shortcut_with_bn,
+                bottleneck_enlarge_factor=bottleneck_enlarge_factor)(block)
+        pool = GlobalAveragePooling2D()(block)
+        dropped = Dropout(dropout)(pool)
+    else:  # add softmax heatmap and FC instead of conv layers.
+        avg_pool_layer = model.layers[-4]
+        pool1 = AveragePooling2D(pool_size=avg_pool_layer.pool_size, 
+                                 strides=hm_strides)(block)
+        dropped = Dropout(dropout)(pool1)
+        clf_layer = model.layers[-1]
+        clf_weights = clf_layer.get_weights()
+        clf_classes = clf_layer.output_shape[1]
+        def softmax(x):
+            return activations.softmax(x, axis=CHANNEL_AXIS)
+        heatmap_layer = Dense(clf_classes, activation=softmax, 
+                              kernel_regularizer=l2(weight_decay))
+        heatmap = heatmap_layer(dropped)
+        heatmap_layer.set_weights(clf_weights)
+        pool2 = MaxPooling2D(pool_size=hm_pool_size)(heatmap)
+        fc = Flatten()(pool2)
+        dropped = Dropout(dropout)(fc)
+        top_layer_nb = 8
+        units=fc_init_units
+        for i in xrange(fc_layers):
+            fc = Dense(units, kernel_initializer="he_normal", 
+                       kernel_regularizer=l2(weight_decay))(dropped)
+            norm = BatchNormalization()(fc)
+            relu = Activation('relu')(norm)
+            dropped = Dropout(dropout)(relu)
+            units /= 2
     dense = Dense(nb_class, kernel_initializer="he_normal", 
                   activation='softmax', 
                   kernel_regularizer=l2(weight_decay))(dropped)
-    model_addtop = Model(inputs=model.inputs, outputs=dense)
+    model_addtop = Model(inputs=image_input, outputs=dense)
+    # import pdb; pdb.set_trace()
 
-    return model_addtop, top_layer_nb
+    return model_addtop, top_layer_nb 
 
 
 class ResNetBuilder(object):
