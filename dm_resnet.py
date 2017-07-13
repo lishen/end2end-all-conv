@@ -181,15 +181,11 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
                    block_fn=bottleneck_org, nb_class=2, 
                    shortcut_with_bn=True, bottleneck_enlarge_factor=4,
                    dropout=.0, weight_decay=.0001,
-                   add_heatmap=False, hm_strides=(1,1), hm_pool_size=(5,5),
+                   add_heatmap=False, add_conv=True, 
+                   hm_strides=(1,1), hm_pool_size=(5,5),
                    fc_init_units=64, fc_layers=2):
-    last_kept_layer = model.layers[-5]
-    block = last_kept_layer.output
-    image_input = Input(shape=(image_size[0],image_size[1],3))
-    model0 = Model(inputs=model.inputs, outputs=block)
-    block = model0(image_input)
-    if not add_heatmap:
-        top_layer_nb = 2
+
+    def add_residual_blocks(block):
         for depth,repetition in zip(depths, repetitions):
             block = _residual_block(
                 block_fn, depth, repetition,
@@ -198,7 +194,27 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
                 bottleneck_enlarge_factor=bottleneck_enlarge_factor)(block)
         pool = GlobalAveragePooling2D()(block)
         dropped = Dropout(dropout)(pool)
-    else:  # add softmax heatmap and FC instead of conv layers.
+        return dropped
+
+    def add_fc_layers(block):
+        fc = Flatten()(block)
+        dropped = Dropout(dropout)(fc)
+        units=fc_init_units
+        for i in xrange(fc_layers):
+            fc = Dense(units, kernel_initializer="he_normal", 
+                       kernel_regularizer=l2(weight_decay))(dropped)
+            norm = BatchNormalization()(fc)
+            relu = Activation('relu')(norm)
+            dropped = Dropout(dropout)(relu)
+            units /= 2
+        return dropped
+
+    last_kept_layer = model.layers[-5]
+    block = last_kept_layer.output
+    image_input = Input(shape=(image_size[0],image_size[1],3))
+    model0 = Model(inputs=model.inputs, outputs=block)
+    block = model0(image_input)
+    if add_heatmap:  # add softmax heatmap.
         avg_pool_layer = model.layers[-4]
         pool1 = AveragePooling2D(pool_size=avg_pool_layer.pool_size, 
                                  strides=hm_strides)(block)
@@ -212,21 +228,17 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
                               kernel_regularizer=l2(weight_decay))
         heatmap = heatmap_layer(dropped)
         heatmap_layer.set_weights(clf_weights)
-        pool2 = MaxPooling2D(pool_size=hm_pool_size)(heatmap)
-        fc = Flatten()(pool2)
-        dropped = Dropout(dropout)(fc)
+        block = MaxPooling2D(pool_size=hm_pool_size)(heatmap)
         top_layer_nb = 8
-        units=fc_init_units
-        for i in xrange(fc_layers):
-            fc = Dense(units, kernel_initializer="he_normal", 
-                       kernel_regularizer=l2(weight_decay))(dropped)
-            norm = BatchNormalization()(fc)
-            relu = Activation('relu')(norm)
-            dropped = Dropout(dropout)(relu)
-            units /= 2
+    else:
+        top_layer_nb = 2
+    if add_conv:
+        block = add_residual_blocks(block)
+    else:
+        block = add_fc_layers(block)
     dense = Dense(nb_class, kernel_initializer="he_normal", 
                   activation='softmax', 
-                  kernel_regularizer=l2(weight_decay))(dropped)
+                  kernel_regularizer=l2(weight_decay))(block)
     model_addtop = Model(inputs=image_input, outputs=dense)
     # import pdb; pdb.set_trace()
 

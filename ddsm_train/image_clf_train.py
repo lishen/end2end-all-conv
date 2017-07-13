@@ -22,7 +22,8 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         class_list=['neg', 'pos'],
         top_depths=[512, 512], top_repetitions=[3, 3], 
         bottleneck_enlarge_factor=4, 
-        add_heatmap=False, hm_strides=(1,1), hm_pool_size=(5,5),
+        add_heatmap=False, add_conv=True, 
+        hm_strides=(1,1), hm_pool_size=(5,5),
         fc_init_units=64, fc_layers=2,
         top_layer_nb=None,
         batch_size=64, train_bs_multiplier=.5, 
@@ -75,9 +76,9 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
             nb_class=len(class_list), shortcut_with_bn=True, 
             bottleneck_enlarge_factor=bottleneck_enlarge_factor,
             dropout=hidden_dropout, weight_decay=weight_decay,
-            add_heatmap=add_heatmap, hm_strides=hm_strides, 
-            hm_pool_size=hm_pool_size, fc_init_units=fc_init_units,
-            fc_layers=fc_layers)
+            add_heatmap=add_heatmap, add_conv=add_conv, 
+            hm_strides=hm_strides, hm_pool_size=hm_pool_size, 
+            fc_init_units=fc_init_units, fc_layers=fc_layers)
     if gpu_count > 1:
         image_model, org_model = make_parallel(image_model, gpu_count)
     else:
@@ -236,6 +237,9 @@ if __name__ == '__main__':
     parser.add_argument("--add-heatmap", dest="add_heatmap", action="store_true")
     parser.add_argument("--no-add-heatmap", dest="add_heatmap", action="store_false")
     parser.set_defaults(add_heatmap=False)
+    parser.add_argument("--add-conv", dest="add_conv", action="store_true")
+    parser.add_argument("--no-add-conv", dest="add_conv", action="store_false")
+    parser.set_defaults(add_conv=True)
     parser.add_argument("--hm-strides", dest="hm_strides", nargs=2, type=int, default=[1, 1])
     parser.add_argument("--hm-pool-size", dest="hm_pool_size", nargs=2, type=int, default=[5,5])
     parser.add_argument("--fc-init-units", dest="fc_init_units", type=int, default=64)
@@ -289,6 +293,7 @@ if __name__ == '__main__':
         top_repetitions=args.top_repetitions,
         bottleneck_enlarge_factor=args.bottleneck_enlarge_factor,
         add_heatmap=args.add_heatmap,
+        add_conv=args.add_conv,
         hm_strides=args.hm_strides,
         hm_pool_size=args.hm_pool_size,
         fc_init_units=args.fc_init_units,
