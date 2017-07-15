@@ -181,7 +181,7 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
                    block_fn=bottleneck_org, nb_class=2, 
                    shortcut_with_bn=True, bottleneck_enlarge_factor=4,
                    dropout=.0, weight_decay=.0001,
-                   add_heatmap=False, add_conv=True, 
+                   add_heatmap=False, add_conv=True, add_shortcut=False,
                    hm_strides=(1,1), hm_pool_size=(5,5),
                    fc_init_units=64, fc_layers=2):
 
@@ -197,8 +197,8 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
         return dropped
 
     def add_fc_layers(block):
-        fc = Flatten()(block)
-        dropped = Dropout(dropout)(fc)
+        flattened = Flatten()(block)
+        dropped = Dropout(dropout)(flattened)
         units=fc_init_units
         for i in xrange(fc_layers):
             fc = Dense(units, kernel_initializer="he_normal", 
@@ -207,7 +207,7 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
             relu = Activation('relu')(norm)
             dropped = Dropout(dropout)(relu)
             units /= 2
-        return dropped
+        return dropped, flattened
 
     last_kept_layer = model.layers[-5]
     block = last_kept_layer.output
@@ -235,10 +235,18 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
     if add_conv:
         block = add_residual_blocks(block)
     else:
-        block = add_fc_layers(block)
-    dense = Dense(nb_class, kernel_initializer="he_normal", 
-                  activation='softmax', 
-                  kernel_regularizer=l2(weight_decay))(block)
+        block, flattened = add_fc_layers(block)
+    if add_shortcut and not add_conv:
+        dense = Dense(nb_class, kernel_initializer="he_normal", 
+                      kernel_regularizer=l2(weight_decay))(block)
+        shortcut = Dense(nb_class, kernel_initializer="he_normal", 
+                         kernel_regularizer=l2(weight_decay))(flattened)
+        addition = add([dense, shortcut])
+        dense = Activation('softmax')(addition)
+    else:
+        dense = Dense(nb_class, kernel_initializer="he_normal", 
+                      activation='softmax', 
+                      kernel_regularizer=l2(weight_decay))(block)
     model_addtop = Model(inputs=image_input, outputs=dense)
     # import pdb; pdb.set_trace()
 
