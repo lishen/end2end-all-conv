@@ -20,7 +20,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         featurewise_center=True, featurewise_mean=52.16, 
         equalize_hist=False, augmentation=True,
         class_list=['neg', 'pos'],
-        top_depths=[512, 512], top_repetitions=[3, 3], 
+        block_type='resnet', top_depths=[512, 512], top_repetitions=[3, 3], 
         bottleneck_enlarge_factor=4, 
         add_heatmap=False, add_conv=True, add_shortcut=False,
         hm_strides=(1,1), hm_pool_size=(5,5),
@@ -72,7 +72,8 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
     else:
         patch_model = load_model(patch_model_state, compile=False)
         image_model, top_layer_nb = add_top_layers(
-            patch_model, img_size, top_depths, top_repetitions, bottleneck_org,
+            patch_model, img_size, block_type, 
+            top_depths, top_repetitions, bottleneck_org,
             nb_class=len(class_list), shortcut_with_bn=True, 
             bottleneck_enlarge_factor=bottleneck_enlarge_factor,
             dropout=hidden_dropout, weight_decay=weight_decay,
@@ -230,6 +231,7 @@ if __name__ == '__main__':
     parser.set_defaults(augmentation=True)
     parser.add_argument("--class-list", dest="class_list", nargs='+', type=str, 
                         default=['neg', 'pos'])
+    parser.add_argument("--block-type", dest="block_type", type=str, default="resnet")
     parser.add_argument("--top-depths", dest="top_depths", nargs='+', type=int, default=[512, 512])
     parser.add_argument("--top-repetitions", dest="top_repetitions", nargs='+', type=int, 
                         default=[3, 3])
@@ -293,6 +295,7 @@ if __name__ == '__main__':
         train_bs_multiplier=args.train_bs_multiplier,
         augmentation=args.augmentation,
         class_list=args.class_list,
+        block_type=args.block_type,
         top_depths=args.top_depths,
         top_repetitions=args.top_repetitions,
         bottleneck_enlarge_factor=args.bottleneck_enlarge_factor,

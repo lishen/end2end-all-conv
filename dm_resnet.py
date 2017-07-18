@@ -177,7 +177,22 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
     return f
 
 
-def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1], 
+def _vgg_block(nb_filters, repetitions, dropout=.0, weight_decay=.01):
+    def f(input):
+        for i in range(repetitions):
+            input = Conv2D(nb_filters, (3, 3), activation='relu', padding='same', 
+                           kernel_initializer="he_normal", 
+                           kernel_regularizer=l2(weight_decay))(input)
+            input = BatchNormalization()(input)
+            input = Dropout(dropout)(input)
+        input = MaxPooling2D((2, 2), strides=(2, 2))(input)
+        return input
+
+    return f
+
+
+def add_top_layers(model, image_size, block_type='resnet', 
+                   depths=[512,512], repetitions=[1,1], 
                    block_fn=bottleneck_org, nb_class=2, 
                    shortcut_with_bn=True, bottleneck_enlarge_factor=4,
                    dropout=.0, weight_decay=.0001,
@@ -196,6 +211,15 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
         dropped = Dropout(dropout)(pool)
         return dropped
 
+    def add_vgg_blocks(block):
+        for depth,repetition in zip(depths, repetitions):
+            block = _vgg_block(depth, repetition,
+                               dropout=dropout, 
+                               weight_decay=weight_decay)(block)
+        pool = GlobalAveragePooling2D()(block)
+        dropped = Dropout(dropout)(pool)
+        return dropped
+    
     def add_fc_layers(block):
         flattened = Flatten()(block)
         dropped = Dropout(dropout)(flattened)
@@ -233,7 +257,12 @@ def add_top_layers(model, image_size, depths=[512,512], repetitions=[1,1],
     else:
         top_layer_nb = 2
     if add_conv:
-        block = add_residual_blocks(block)
+        if block_type == 'resnet':
+            block = add_residual_blocks(block)
+        elif block_type == 'vgg':
+            block = add_vgg_blocks(block)
+        else:
+            raise Exception('Unsupported block type: ' + block_type)
     else:
         block, flattened = add_fc_layers(block)
     if add_shortcut and not add_conv:
