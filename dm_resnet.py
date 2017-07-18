@@ -180,10 +180,11 @@ def bottleneck_org(nb_filters, init_strides=(1, 1), identity=True,
 def _vgg_block(nb_filters, repetitions, dropout=.0, weight_decay=.01):
     def f(input):
         for i in range(repetitions):
-            input = Conv2D(nb_filters, (3, 3), activation='relu', padding='same', 
+            input = Conv2D(nb_filters, (3, 3), padding='same', 
                            kernel_initializer="he_normal", 
                            kernel_regularizer=l2(weight_decay))(input)
             input = BatchNormalization()(input)
+            input = Activation('relu')(input)
             input = Dropout(dropout)(input)
         input = MaxPooling2D((2, 2), strides=(2, 2))(input)
         return input
@@ -242,9 +243,11 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
     model0 = Model(inputs=model.inputs, outputs=block)
     block = model0(image_input)
     if add_heatmap:  # add softmax heatmap.
+        #### BUG: this works for resnet50 only !!! ####
         avg_pool_layer = model.layers[-4]
         pool1 = AveragePooling2D(pool_size=avg_pool_layer.pool_size, 
                                  strides=hm_strides)(block)
+        ####################################
         dropped = Dropout(dropout)(pool1)
         clf_layer = model.layers[-1]
         clf_weights = clf_layer.get_weights()
