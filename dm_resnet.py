@@ -191,7 +191,7 @@ def _vgg_block(nb_filters, repetitions, dropout=.0, weight_decay=.01):
     return f
 
 
-def add_top_layers(model, image_size, block_type='resnet', 
+def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet', 
                    depths=[512,512], repetitions=[1,1], 
                    block_fn=bottleneck_org, nb_class=2, 
                    shortcut_with_bn=True, bottleneck_enlarge_factor=4,
@@ -233,7 +233,10 @@ def add_top_layers(model, image_size, block_type='resnet',
             units /= 2
         return dropped, flattened
 
-    last_kept_layer = model.layers[-5]
+    if patch_net == 'resnet50':
+        last_kept_layer = model.layers[-5]
+    else:
+        last_kept_layer = model.layers[-4]
     block = last_kept_layer.output
     image_input = Input(shape=(image_size[0],image_size[1],3))
     model0 = Model(inputs=model.inputs, outputs=block)

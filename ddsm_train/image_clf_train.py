@@ -19,7 +19,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
         img_size=[1152, 896], img_scale=None, rescale_factor=None,
         featurewise_center=True, featurewise_mean=52.16, 
         equalize_hist=False, augmentation=True,
-        class_list=['neg', 'pos'],
+        class_list=['neg', 'pos'], patch_net='resnet50',
         block_type='resnet', top_depths=[512, 512], top_repetitions=[3, 3], 
         bottleneck_enlarge_factor=4, 
         add_heatmap=False, add_conv=True, add_shortcut=False,
@@ -72,7 +72,7 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
     else:
         patch_model = load_model(patch_model_state, compile=False)
         image_model, top_layer_nb = add_top_layers(
-            patch_model, img_size, block_type, 
+            patch_model, img_size, patch_net, block_type, 
             top_depths, top_repetitions, bottleneck_org,
             nb_class=len(class_list), shortcut_with_bn=True, 
             bottleneck_enlarge_factor=bottleneck_enlarge_factor,
@@ -231,6 +231,7 @@ if __name__ == '__main__':
     parser.set_defaults(augmentation=True)
     parser.add_argument("--class-list", dest="class_list", nargs='+', type=str, 
                         default=['neg', 'pos'])
+    parser.add_argument("--patch-net", dest="patch_net", type=str, default="resnet50")
     parser.add_argument("--block-type", dest="block_type", type=str, default="resnet")
     parser.add_argument("--top-depths", dest="top_depths", nargs='+', type=int, default=[512, 512])
     parser.add_argument("--top-repetitions", dest="top_repetitions", nargs='+', type=int, 
@@ -295,6 +296,7 @@ if __name__ == '__main__':
         train_bs_multiplier=args.train_bs_multiplier,
         augmentation=args.augmentation,
         class_list=args.class_list,
+        patch_net=args.patch_net,
         block_type=args.block_type,
         top_depths=args.top_depths,
         top_repetitions=args.top_repetitions,
