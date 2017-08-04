@@ -410,7 +410,8 @@ class DMAucModelCheckpoint(Callback):
         self.best_all_auc = None
 
     @staticmethod
-    def calc_test_auc(test_set, model, batch_size=None, test_samples=None):
+    def calc_test_auc(test_set, model, batch_size=None, test_samples=None,
+                      return_y_res=False):
         if isinstance(test_set, tuple):
             if batch_size is None:
                 raise Exception('batch_size must be specified when ' + \
@@ -452,6 +453,8 @@ class DMAucModelCheckpoint(Callback):
                                 sample_weight=weights)
         except ValueError:
             auc = .0
+        if return_y_res:
+            return (auc, y_true, y_pred)
         return auc
 
     def on_epoch_end(self, epoch, logs={}):
