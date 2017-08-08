@@ -197,7 +197,7 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
                    block_fn=bottleneck_org, nb_class=2, 
                    shortcut_with_bn=True, bottleneck_enlarge_factor=4,
                    dropout=.0, weight_decay=.0001,
-                   add_heatmap=False, avg_pool_size=(7,7), 
+                   add_heatmap=False, avg_pool_size=(7,7), return_heatmap=False,
                    add_conv=True, add_shortcut=False,
                    hm_strides=(1,1), hm_pool_size=(5,5),
                    fc_init_units=64, fc_layers=2):
@@ -243,10 +243,13 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
     image_input = Input(shape=(image_size[0],image_size[1],3))
     model0 = Model(inputs=model.inputs, outputs=block)
     block = model0(image_input)
-    if add_heatmap:  # add softmax heatmap.
+    if add_heatmap or return_heatmap:  # add softmax heatmap.
         pool1 = AveragePooling2D(pool_size=avg_pool_size, 
                                  strides=hm_strides)(block)
-        dropped = Dropout(dropout)(pool1)
+        if return_heatmap:
+            dropped = pool1
+        else:
+            dropped = Dropout(dropout)(pool1)
         clf_layer = model.layers[-1]
         clf_weights = clf_layer.get_weights()
         clf_classes = clf_layer.output_shape[1]
@@ -256,6 +259,9 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
                               kernel_regularizer=l2(weight_decay))
         heatmap = heatmap_layer(dropped)
         heatmap_layer.set_weights(clf_weights)
+        if return_heatmap:
+            model_heatmap = Model(inputs=image_input, outputs=heatmap)
+            return model_heatmap
         block = MaxPooling2D(pool_size=hm_pool_size)(heatmap)
         top_layer_nb = 8
     else:

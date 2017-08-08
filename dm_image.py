@@ -99,6 +99,32 @@ def read_resize_img(fname, target_size=None, target_height=None,
     return img
 
 
+def read_img_for_pred(fname, equalize_hist=False, data_format='channels_last', 
+                      dup_3_channels=True,
+                      transformer=None, standardizer=None, **kwargs):
+    '''Read an image and prepare it for prediction through a network
+    '''
+    img = read_resize_img(fname, **kwargs)
+    if equalize_hist:
+        img = cv2.equalizeHist(img.astype('uint8'))
+    nb_channel = 3 if dup_3_channels else 1        
+    if data_format == 'channels_first':
+        x = np.zeros((nb_channel,) + img.shape, dtype='float32')
+        x[0,:,:] = img
+        if dup_3_channels:
+            x[1,:,:] = img
+            x[2,:,:] = img
+    else:
+        x = np.zeros(img.shape + (nb_channel,), dtype='float32')
+        x[:,:,0] = img
+        if dup_3_channels:
+            x[:,:,1] = img
+            x[:,:,2] = img
+    x = transformer(x) if transformer is not None else x
+    x = standardizer(x) if standardizer is not None else x
+    return x
+
+
 def get_roi_patches(img, key_pts, roi_size=(256, 256)):
     '''Extract image patches according to a key points list
     '''
@@ -1178,31 +1204,17 @@ class DMDirectoryIterator(Iterator):
         # The transformation of images is not under thread lock so it can be done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape, 
                            dtype='float32')
-        nb_channel = 3 if self.dup_3_channels else 1
         # build batch of image data
         for i, j in enumerate(index_array):
             fname = self.filenames[j]
-            img = read_resize_img(path.join(self.directory, fname),
-                                  target_size=self.target_size,
-                                  target_scale=self.target_scale,
-                                  gs_255=self.gs_255,
-                                  rescale_factor=self.rescale_factor)
-            if self.equalize_hist:
-                img = cv2.equalizeHist(img.astype('uint8'))
-            if self.data_format == 'channels_first':
-                x = np.zeros((nb_channel,) + img.shape, dtype='float32')
-                x[0,:,:] = img
-                if self.dup_3_channels:
-                    x[1,:,:] = img
-                    x[2,:,:] = img
-            else:
-                x = np.zeros(img.shape + (nb_channel,), dtype='float32')
-                x[:,:,0] = img
-                if self.dup_3_channels:
-                    x[:,:,1] = img
-                    x[:,:,2] = img
-            x = self.image_data_generator.random_transform(x)
-            x = self.image_data_generator.standardize(x)
+            x = read_img_for_pred(
+                path.join(self.directory, fname), 
+                equalize_hist=self.equalize_hist, data_format=self.data_format,
+                dup_3_channels=self.dup_3_channels, 
+                transformer=self.image_data_generator.random_transform,
+                standardizer=self.image_data_generator.standardize,
+                target_size=self.target_size, target_scale=self.target_scale,
+                gs_255=self.gs_255, rescale_factor=self.rescale_factor)
             batch_x[i] = x
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
