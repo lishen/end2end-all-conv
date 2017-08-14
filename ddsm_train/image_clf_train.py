@@ -211,6 +211,7 @@ if __name__ == '__main__':
     parser.add_argument("val_dir", type=str)
     parser.add_argument("test_dir", type=str)
     parser.add_argument("--patch-model-state", dest="patch_model_state", type=str, default=None)
+    parser.add_argument("--no-patch-model-state", dest="patch_model_state", action="store_const", const=None)
     parser.add_argument("--resume-from", dest="resume_from", type=str, default=None)
     parser.add_argument("--no-resume-from", dest="resume_from", action="store_const", const=None)
     parser.add_argument("--img-size", "-is", dest="img_size", nargs=2, type=int, default=[1152, 896])
