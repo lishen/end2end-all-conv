@@ -14,11 +14,27 @@ from keras.callbacks import (
     EarlyStopping, 
     ModelCheckpoint
 )
+from keras.preprocessing.image import flip_axis
 import keras.backend as K
 data_format = K.image_data_format()
 from sklearn.metrics import roc_auc_score
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
+
+
+def flip_all_img(X):
+    '''Perform horizontal and vertical flips for a 4-D image tensor
+    '''
+    if data_format == 'channels_last':
+        row_axis = 1
+        col_axis = 2
+    else:
+        row_axis = 2
+        col_axis = 3
+    X_h = flip_axis(X, col_axis)
+    X_v = flip_axis(X, row_axis)
+    X_h_v = flip_axis(X_h, row_axis)
+    return [X, X_h, X_v, X_h_v]
 
 
 def robust_load_model(filepath, custom_objects=None):
@@ -411,13 +427,33 @@ class DMAucModelCheckpoint(Callback):
 
     @staticmethod
     def calc_test_auc(test_set, model, batch_size=None, test_samples=None,
-                      return_y_res=False):
+                      return_y_res=False, test_augment=False):
+        '''Calculate the AUC score for a test set or generator given a model
+        '''
+        def augmented_predict(X, batch_size=None):
+            '''Predict on a batch of images with augmentation
+            '''
+            if test_augment:
+                X_tests = flip_all_img(X)  # X_tests is a list of augmented images.
+                y_preds = []
+                for X_test in X_tests:
+                    if batch_size is None:
+                        y_preds.append(model.predict_on_batch(X_test))
+                    else:
+                        y_preds.append(model.predict(X_test, batch_size))
+                y_pred = np.stack(y_preds).mean(axis=0)
+            elif batch_size is None:
+                y_pred = model.predict_on_batch(X)
+            else:
+                y_pred = model.predict(X, batch_size)
+            return y_pred
+
         if isinstance(test_set, tuple):
             if batch_size is None:
                 raise Exception('batch_size must be specified when ' + \
                                 'test set is loaded into RAM')
             y_true = test_set[1]
-            y_pred = model.predict(test_set[0], batch_size)
+            y_pred = augmented_predict(test_set[0], batch_size)
             if len(test_set) > 2:
                 weights = test_set[2]
             else:
@@ -439,7 +475,7 @@ class DMAucModelCheckpoint(Callback):
                 X, y = res[:2]
                 samples_seen += len(y)
                 y_list.append(y)
-                pred_list.append(model.predict_on_batch(X))
+                pred_list.append(augmented_predict(X))
             y_true = np.concatenate(y_list)
             y_pred = np.concatenate(pred_list)
             if len(wei_list) > 0:
