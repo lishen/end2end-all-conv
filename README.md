@@ -36,6 +36,8 @@ The rescale factor is used to rescale the pixel intensities so that the max valu
 This is simply the mean pixel intensity of your train set images.
 ### Image size
 This is currently fixed at 1152x896 for the models in this study. However, you can change the image size when converting from a patch classifier to a whole image classifier.
+### Let the Python modules be seen
+I simpy modify the `PYTHONPATH` variable like this: `export PYTHONPATH=$PYTHONPATH:your_path_to_repo/end2end-all-conv`
 ### Finetune
 Now you can finetune a model on your own data for cancer predictions! You may check out this shell [script](ddsm_train/train_image_clf_inbreast.sh). Alternatively, copy & paste from here:
 ```shell
