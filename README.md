@@ -1,5 +1,5 @@
 # End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design
-Li Shen, Ph.D.
+Li Shen, Ph.D. CS
 
 Icahn School of Medicine at Mount Sinai
 
@@ -75,7 +75,12 @@ python image_clf_train.py \
     --final-model $FINAL_MODEL \
     $TRAIN_DIR $VAL_DIR $TEST_DIR
 ```
-
+Some explanations of the arguments:
+- The batch size for training is the product of `--batch-size` and `--train-bs-multiplier`. Because training uses roughtly twice (both forward and back props) the GPU memory of testing, `--train-bs-multiplier` is set to 0.5 here.
+- For model finetuning, only the second stage of the two-stage training is used here. So `--nb-epoch` is set to 0.
+- `--load-val-ram` and `--load-train-ram` will load the image data from the validation and train sets into memory. You may want to turn off these options if you don't have sufficient memory. When turned off, out-of-core training will be used.
+- `--weight-decay` and `--hidden-dropout` are for stage 1. `--weight-decay2` and `--hidden-dropout2` are for stage 2.
+- The learning rate for stage 1 is `--init-learningrate`. The learning rate for stage 2 is the product of `--init-learningrate` and `--all-layer-multiplier`.
 
 
 
