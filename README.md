@@ -8,6 +8,8 @@ New York, New York, USA
 ## Introduction
 This is the companion site for our manuscript - "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" at XXX.
 
+For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge).
+
 ## Model downloads
 A few best models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual downloads:
 
@@ -20,7 +22,7 @@ A few best models are available for downloading at this Google Drive [folder](ht
 | INbreast  | VGG16  | \[512-512-1024\]x2  | 0.95  | 0.96  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKUnQwYVhOd2NfQlk)  |
 
 - Inference level augmentation is obtained by horizontal and vertical flips to generate 4 predictions.
-- The scores are single model AUC and prediction averaged AUC.
+- The listed scores are single model AUC and prediction averaged AUC.
 - 3 Model averaging on DDSM gives AUC of 0.91
 - 2 Model averaging on INbreast gives AUC of 0.96.
 
@@ -28,7 +30,6 @@ A few best models are available for downloading at this Google Drive [folder](ht
 
 
 
-This repository was originally for my entry in the DREAM 2016 Digital Mammography challenge. In the challenge, I have developed a classifier based on residual net + probabilistic heatmap + gradient boosting trees. After the challenge ended, I switched the direction into developing an end-to-end training strategy to directly predict cancer status at whole-image level.
 
-For my entry in the challenge, see: https://www.synapse.org/LiShenDMChallenge. I ended up ranking 12 in sub-challenge 1 and 10 in sub-challenge 2 out of more than 100 teams.
+
 
