@@ -5,6 +5,8 @@ Icahn School of Medicine at Mount Sinai
 
 New York, New York, USA
 
+![Fig1](https://raw.githubusercontent.com/lishen/end2end-all-conv/master/ddsm_train/Fig%20-%20convert%20patch%20to%20whole%20image%20classifier.png "Whole image end-to-end training")
+
 ## Introduction
 This is the companion site for our manuscript - "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" at XXX.
 
