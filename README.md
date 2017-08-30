@@ -15,7 +15,7 @@ For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up
 ## Model downloads
 A few best models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual downloads:
 
-| Database  | Patch Classifier  | Top Layers  | Single AUC  | Augmented AUC  | Link  |
+| Database  | Patch Classifier  | Top Layers (two blocks)  | Single AUC  | Augmented AUC  | Link  |
 |---|---|---|---|---|---|
 | DDSM  | Resnet50  | \[512-512-1024\]x2  | 0.86  | 0.88  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKSUJYdzNyZjVsZHc)  |
 | DDSM  | VGG16  | 512x1  | 0.83  | 0.86  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKYnREWlJQZ2JaSDQ)  |
