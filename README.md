@@ -27,7 +27,55 @@ A few best models are available for downloading at this Google Drive [folder](ht
 - 2 Model averaging on INbreast gives AUC of 0.96.
 
 ## Transfer learning is as easy as 1-2-3
+In order to transfer a model to your own data, follow these easy steps.
+### Determine the rescale factor
+The rescale factor is used to rescale the pixel intensities so that the max value is 255. For PNG format, the max value is 65535, so the rescale factor is 255/65535 = 0.003891. If your images are already in the 255 scale, set rescale factor to 1.
+### Calculate the pixel-wise mean
+This is simply the mean pixel intensity of your train set images.
+### Image size
+This is currently fixed at 1152x896 for the models in this study. However, you can change the image size when converting from a patch classifier to a whole image classifier.
+### Finetune
+Now you can finetune a model on your own data for cancer predictions! You may check out this shell [script](ddsm_train/train_image_clf_inbreast.sh). Alternatively, copy & paste from here:
+```shell
+TRAIN_DIR="INbreast/train"
+VAL_DIR="INbreast/val"
+TEST_DIR="INbreast/test"
+RESUME_FROM="ddsm_vgg16_s10_[512-512-1024]x2_hybrid.h5"
+BEST_MODEL="INbreast/transferred_inbreast_best_model.h5"
+FINAL_MODEL="NOSAVE"
 
+export NUM_CPU_CORES=4
+
+python image_clf_train.py \
+	--no-patch-model-state \
+	--resume-from $RESUME_FROM \
+  --img-size 1152 896 \
+  --no-img-scale \
+  --rescale-factor 0.003891 \
+	--featurewise-center \
+  --featurewise-mean 44.33 \
+  --no-equalize-hist \
+  --batch-size 4 \
+  --train-bs-multiplier 0.5 \
+	--augmentation \
+	--class-list neg pos \
+	--nb-epoch 0 \
+  --all-layer-epochs 50 \
+  --load-val-ram \
+  --load-train-ram \
+  --optimizer adam \
+  --weight-decay 0.001 \
+  --hidden-dropout 0.0 \
+  --weight-decay2 0.01 \
+  --hidden-dropout2 0.0 \
+  --init-learningrate 0.0001 \
+  --all-layer-multiplier 0.01 \
+	--es-patience 10 \
+	--auto-batch-balance \
+	--best-model $BEST_MODEL \
+	--final-model $FINAL_MODEL \
+	$TRAIN_DIR $VAL_DIR $TEST_DIR
+```
 
 
 
