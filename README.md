@@ -8,9 +8,9 @@ New York, New York, USA
 ![Fig1](https://raw.githubusercontent.com/lishen/end2end-all-conv/master/ddsm_train/Fig%20-%20convert%20patch%20to%20whole%20image%20classifier.png "Whole image end-to-end training")
 
 ## Introduction
-This is the companion site for our manuscript - "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" at XXX.
+This is the companion site for our paper - "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" at arXiv. Access the paper [here](https://arxiv.org/abs/1708.09427).
 
-For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge).
+For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge). This work is much improved from our method used in the challenge.
 
 ## Model downloads
 A few best models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual downloads:
