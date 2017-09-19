@@ -253,9 +253,11 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
         clf_layer = model.layers[-1]
         clf_weights = clf_layer.get_weights()
         clf_classes = clf_layer.output_shape[1]
-        def softmax(x):
-            return activations.softmax(x, axis=CHANNEL_AXIS)
-        heatmap_layer = Dense(clf_classes, activation=softmax, 
+        if return_heatmap:
+            activation = activations.softmax(x, axis=CHANNEL_AXIS)
+        else:
+            activation = 'relu'
+        heatmap_layer = Dense(clf_classes, activation=activation, 
                               kernel_regularizer=l2(weight_decay))
         heatmap = heatmap_layer(dropped)
         heatmap_layer.set_weights(clf_weights)
