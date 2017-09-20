@@ -28,6 +28,15 @@ A few best models are available for downloading at this Google Drive [folder](ht
 - 3 Model averaging on DDSM gives AUC of 0.91
 - 2 Model averaging on INbreast gives AUC of 0.96.
 
+## A bit explanation of this repository's file structure
+- The **.py** files under the root directory are Python modules to be imported.
+- You shall set the `PYTHONPATH` variable like this: `export PYTHONPATH=$PYTHONPATH:your_path_to_repos/end2end-all-conv` so that the Python modules can be imported.
+- The code for patch sampling, patch classifier and whole image training are under the [ddsm_train](./ddsm_train) folder.
+- [sample_patches_combined.py](./ddsm_train/sample_patches_combined.py) is used to sample patches from images and masks.
+- [patch_clf_train.py](./ddsm_train/patch_clf_train.py) is used to train a patch classifier.
+- [image_clf_train.py](./ddsm_train/image_clf_train.py) is used to train a whole image classifier, either on top of a patch classifier or from another already trained whole image classifier (i.e. finetuning).
+- There are multiple shell scripts under the [ddsm_train](./ddsm_train) folder to serve as examples.
+
 ## Transfer learning is as easy as 1-2-3
 In order to transfer a model to your own data, follow these easy steps.
 ### Determine the rescale factor
@@ -36,8 +45,6 @@ The rescale factor is used to rescale the pixel intensities so that the max valu
 This is simply the mean pixel intensity of your train set images.
 ### Image size
 This is currently fixed at 1152x896 for the models in this study. However, you can change the image size when converting from a patch classifier to a whole image classifier.
-### Let the Python modules be seen
-I simpy modify the `PYTHONPATH` variable like this: `export PYTHONPATH=$PYTHONPATH:your_path_to_repo/end2end-all-conv`
 ### Finetune
 Now you can finetune a model on your own data for cancer predictions! You may check out this shell [script](ddsm_train/train_image_clf_inbreast.sh). Alternatively, copy & paste from here:
 ```shell
