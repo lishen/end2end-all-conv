@@ -12,8 +12,8 @@ This is the companion site for our paper - "End-to-end Training for Whole Image 
 
 For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge). This work is much improved from our method used in the challenge.
 
-## Model downloads
-A few best models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual downloads:
+## Whole image model downloads
+A few best whole image models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual downloads:
 
 | Database  | Patch Classifier  | Top Layers (two blocks)  | Single AUC  | Augmented AUC  | Link  |
 |---|---|---|---|---|---|
@@ -27,6 +27,20 @@ A few best models are available for downloading at this Google Drive [folder](ht
 - The listed scores are single model AUC and prediction averaged AUC.
 - 3 Model averaging on DDSM gives AUC of 0.91
 - 2 Model averaging on INbreast gives AUC of 0.96.
+
+## Patch classifier model downloads
+Several patch classifier models (i.e. patch state) are also available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual download:
+
+| Model  | Train Set | Accuracy | Link |
+|---|---|---|---|
+| Resnet50  | S10  | 0.89  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKMTc2RGV1NGF6bm8) |
+| VGG16  | S10  | 0.84  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKZUotelJBTzkwaGM) |
+| VGG19  | S10  | 0.79  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKUHFpeTgwaVFYS1E) |
+| Resnet50  | S30  | 0.91  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKSW1RZ0NzOVBJWHc) |
+| VGG16  | S30  | 0.86  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKbjdodnp2SlR2WFU) |
+| VGG19  | S30  | 0.89  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKNUpGc3Q1dWJ5OGM) |
+
+With patch classifier models, you can convert them into any whole image classifier by adding convolutional, FC and heatmap layers on top and see for yourself.
 
 ## A bit explanation of this repository's file structure
 - The **.py** files under the root directory are Python modules to be imported.
