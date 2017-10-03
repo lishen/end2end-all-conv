@@ -89,7 +89,10 @@ def run(train_dir, val_dir, test_dir, patch_model_state=None, resume_from=None,
 
     # ============ Train & validation set =============== #
     train_bs = int(batch_size*train_bs_multiplier)
-    dup_3_channels = True
+    if patch_net != 'yaroslav':
+        dup_3_channels = True
+    else:
+        dup_3_channels = False
     if load_train_ram:
         raw_imgen = DMImageDataGenerator()
         print "Create generator for raw train set"

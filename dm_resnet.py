@@ -237,10 +237,13 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
 
     if patch_net == 'resnet50':
         last_kept_layer = model.layers[-5]
+    elif patch_net == 'yaroslav':
+        last_kept_layer = model.layers[-3]
     else:
         last_kept_layer = model.layers[-4]
     block = last_kept_layer.output
-    image_input = Input(shape=(image_size[0],image_size[1],3))
+    channels = 1 if patch_net == 'yaroslav' else 3
+    image_input = Input(shape=(image_size[0], image_size[1], channels))
     model0 = Model(inputs=model.inputs, outputs=block)
     block = model0(image_input)
     if add_heatmap or return_heatmap:  # add softmax heatmap.
