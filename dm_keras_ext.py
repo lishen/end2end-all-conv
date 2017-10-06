@@ -2,7 +2,11 @@ import sys
 import numpy as np
 from keras.callbacks import Callback
 from keras.models import load_model, Model
-from keras.layers import Flatten, Dense, Dropout, GlobalAveragePooling2D
+from keras.layers import (
+    Flatten, Dense, Dropout, Input, 
+    GlobalAveragePooling2D, Activation,
+    MaxPooling2D
+)
 from keras.layers.convolutional import Conv2D
 from keras.regularizers import l2
 from keras.optimizers import (
@@ -17,9 +21,18 @@ from keras.callbacks import (
 from keras.preprocessing.image import flip_axis
 import keras.backend as K
 data_format = K.image_data_format()
+if K.image_data_format() == 'channels_last':
+    ROW_AXIS = 1
+    COL_AXIS = 2
+    CHANNEL_AXIS = 3
+else:
+    CHANNEL_AXIS = 1
+    ROW_AXIS = 2
+    COL_AXIS = 3
 from sklearn.metrics import roc_auc_score
 from dm_resnet import ResNetBuilder
 from dm_multi_gpu import make_parallel
+from keras.layers.normalization import BatchNormalization
 
 
 def flip_all_img(X):
@@ -77,6 +90,86 @@ def load_dat_ram(generator, nb_samples):
     return data_set
 
 
+def Yaroslav(input_shape=None, classes=5):
+    """Instantiates the Yaroslav's winning architecture for patch classifiers.
+    """
+    if input_shape is None:
+        if data_format == 'channels_last':
+            input_shape = (None, None, 1)
+        else:
+            input_shape = (1, None, None)
+    img_input = Input(shape=input_shape)
+
+    # Block 1
+    x = Conv2D(32, (3, 3), padding='same', name='block1_conv1')(img_input)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(32, (3, 3), padding='same', name='block1_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
+
+    # Block 2
+    x = Conv2D(64, (3, 3), padding='same', name='block2_conv1')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(64, (3, 3), padding='same', name='block2_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
+
+    # Block 3
+    x = Conv2D(128, (3, 3), padding='same', name='block3_conv1')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(128, (3, 3), padding='same', name='block3_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
+
+    # Block 4
+    x = Conv2D(256, (3, 3), padding='same', name='block4_conv1')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(256, (3, 3), padding='same', name='block4_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
+
+    # Block 5
+    x = Conv2D(256, (3, 3), padding='same', name='block5_conv1')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(256, (3, 3), padding='same', name='block5_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
+
+    # Block 6
+    x = Conv2D(512, (3, 3), padding='same', name='block6_conv1')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = Conv2D(512, (3, 3), padding='same', name='block6_conv2')(x)
+    x = BatchNormalization(axis=CHANNEL_AXIS)(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block6_pool')(x)
+
+    # Classification block
+    #x = Flatten(name='flatten')(x)
+    #x = Dense(1024, name='fc1')(x)
+    #x = BatchNormalization()(x)
+    #x = Activation('relu')(x)
+    #x = Dense(512, name='fc2')(x)
+    #x = BatchNormalization()(x)
+    #x = Activation('relu')(x)
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(classes, activation='softmax', name='predictions')(x)
+
+    # Create model.
+    model = Model(img_input, x, name='yaroslav')
+    return model
+
+
 def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None, 
                  top_layer_nb=None, weight_decay=.01,
                  hidden_dropout=.0, **kw_args):
@@ -99,6 +192,9 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
     elif net == 'inception':
         from keras.applications.inception_v3 import InceptionV3 as NNet, preprocess_input
         top_layer_nb = 194 if top_layer_nb is None else top_layer_nb
+    elif net == 'yaroslav':
+        top_layer_nb = None
+        preprocess_input = None
     else:
         raise Exception("Requested model is not available: " + net)
     weights = 'imagenet' if use_pretrained else None
@@ -108,6 +204,8 @@ def get_dl_model(net, nb_class=3, use_pretrained=True, resume_from=None,
         sys.stdout.flush()
         model = load_model(resume_from)
         print "Done."
+    elif net == 'yaroslav':
+        model = Yaroslav(classes=nb_class)
     else:
         print "Loading %s," % (net),
         sys.stdout.flush()

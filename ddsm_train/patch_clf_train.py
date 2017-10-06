@@ -82,7 +82,10 @@ def run(train_dir, val_dir, test_dir,
 
     # ============ Train & validation set =============== #
     train_bs = int(batch_size*train_bs_multiplier)
-    dup_3_channels = True
+    if net != 'yaroslav':
+        dup_3_channels = True
+    else:
+        dup_3_channels = False
     if load_train_ram:
         raw_imgen = DMImageDataGenerator()
         print "Create generator for raw train set"

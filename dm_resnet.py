@@ -237,10 +237,13 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
 
     if patch_net == 'resnet50':
         last_kept_layer = model.layers[-5]
+    elif patch_net == 'yaroslav':
+        last_kept_layer = model.layers[-3]
     else:
         last_kept_layer = model.layers[-4]
     block = last_kept_layer.output
-    image_input = Input(shape=(image_size[0],image_size[1],3))
+    channels = 1 if patch_net == 'yaroslav' else 3
+    image_input = Input(shape=(image_size[0], image_size[1], channels))
     model0 = Model(inputs=model.inputs, outputs=block)
     block = model0(image_input)
     if add_heatmap or return_heatmap:  # add softmax heatmap.
@@ -253,9 +256,11 @@ def add_top_layers(model, image_size, patch_net='resnet50', block_type='resnet',
         clf_layer = model.layers[-1]
         clf_weights = clf_layer.get_weights()
         clf_classes = clf_layer.output_shape[1]
-        def softmax(x):
-            return activations.softmax(x, axis=CHANNEL_AXIS)
-        heatmap_layer = Dense(clf_classes, activation=softmax, 
+        if return_heatmap:
+            activation = activations.softmax(x, axis=CHANNEL_AXIS)
+        else:
+            activation = 'relu'
+        heatmap_layer = Dense(clf_classes, activation=activation, 
                               kernel_regularizer=l2(weight_decay))
         heatmap = heatmap_layer(dropped)
         heatmap_layer.set_weights(clf_weights)
