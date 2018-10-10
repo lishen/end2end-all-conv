@@ -1,4 +1,4 @@
-# End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design
+# End-to-end Training for Whole Image Breast Cancer Screening using An All Convolutional Design
 Li Shen, Ph.D. CS
 
 Icahn School of Medicine at Mount Sinai
