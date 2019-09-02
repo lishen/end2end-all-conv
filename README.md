@@ -1,4 +1,4 @@
-# End-to-end Training for Whole Image Breast Cancer Screening using An All Convolutional Design
+# Deep Learning to Improve Breast Cancer Detection on Screening Mammography (Alternative Title: End-to-end Training for Whole Image Breast Cancer Screening using An All Convolutional Design)
 Li Shen, Ph.D. CS
 
 Icahn School of Medicine at Mount Sinai
@@ -8,7 +8,7 @@ New York, New York, USA
 ![Fig1](https://raw.githubusercontent.com/lishen/end2end-all-conv/master/ddsm_train/Fig%20-%20convert%20patch%20to%20whole%20image%20classifier.png "Whole image end-to-end training")
 
 ## Introduction
-This is the companion site for our paper - "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" at arXiv. Access the paper [here](https://arxiv.org/abs/1708.09427). This work was presented at the NIPS17 workshop on machine learning for health. Access the 4-page short paper [here](https://arxiv.org/abs/1711.05775). Download the [poster](https://raw.githubusercontent.com/lishen/end2end-all-conv/master/ddsm_train/NIPS17%20ML4H%20Poster.pdf).
+This is the companion site for our paper that was originally titled "End-to-end Training for Whole Image Breast Cancer Diagnosis using An All Convolutional Design" and was retitled as "Deep Learning to Improve Breast Cancer Detection on Screening Mammography". The paper has been published [here](https://rdcu.be/bPOYf). You may also find the arXiv version [here](https://arxiv.org/abs/1708.09427). This work was initially presented at the NIPS17 workshop on machine learning for health. Access the 4-page short paper [here](https://arxiv.org/abs/1711.05775). Download the [poster](https://raw.githubusercontent.com/lishen/end2end-all-conv/master/ddsm_train/NIPS17%20ML4H%20Poster.pdf).
 
 For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge). This work is much improved from our method used in the challenge.
 
