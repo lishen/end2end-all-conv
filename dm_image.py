@@ -10,7 +10,10 @@ from keras.preprocessing.image import (
 from keras.utils.np_utils import to_categorical 
 import keras.backend as K
 import cv2
-import dicom
+try:
+    import dicom
+except ImportError:
+    import pydicom as dicom
 from dm_preprocess import DMImagePreprocessor as prep
 data_format = K.image_data_format()
 
