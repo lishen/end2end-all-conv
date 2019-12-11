@@ -111,6 +111,8 @@ Some explanations of the arguments:
 
 ## Computational environment
 The research in this study is carried out on a Linux workstation with 8 CPU cores and a single NVIDIA Quadro M4000 GPU with 8GB memory. The deep learning framework is Keras 2 with Tensorflow as the backend. 
+### About Keras version
+It is known that Keras >= 2.1.0 can give errors due an API change. See issue [#7](https://github.com/lishen/end2end-all-conv/issues/7). Use Keras with version < 2.1.0. For example, Keras=2.0.8 is known to work.
 
 
 
