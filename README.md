@@ -55,6 +55,28 @@ With patch classifier models, you can convert them into any whole image classifi
 - [image_clf_train.py](./ddsm_train/image_clf_train.py) is used to train a whole image classifier, either on top of a patch classifier or from another already trained whole image classifier (i.e. finetuning).
 - There are multiple shell scripts under the [ddsm_train](./ddsm_train) folder to serve as examples.
 
+## Some input files' format
+I've got a lot of requests asking about the format of some input files. Here I provide the first few lines and hope they can be helpful:
+
+**roi_mask_path.csv**
+```
+patient_id,side,view,abn_num,pathology,type
+P_00005,RIGHT,CC,1,MALIGNANT,calc
+P_00005,RIGHT,MLO,1,MALIGNANT,calc
+P_00007,LEFT,CC,1,BENIGN,calc
+P_00007,LEFT,MLO,1,BENIGN,calc
+P_00008,LEFT,CC,1,BENIGN_WITHOUT_CALLBACK,calc
+```
+
+**pat_train.txt**
+```
+P_00601
+P_00413
+P_01163
+P_00101
+P_01122
+```
+
 ## Transfer learning is as easy as 1-2-3
 In order to transfer a model to your own data, follow these easy steps.
 ### Determine the rescale factor
