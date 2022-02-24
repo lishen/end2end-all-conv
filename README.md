@@ -24,16 +24,16 @@ This is the companion site for our paper that was originally titled "End-to-end 
 For our entry in the DREAM2016 Digital Mammography challenge, see this [write-up](https://www.synapse.org/LiShenDMChallenge). This work is much improved from our method used in the challenge.
 
 ## Whole image model downloads
-A few best whole image models are available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). YaroslavNet is the DM challenge top-performing team's [method](https://www.synapse.org/#!Synapse:syn9773040/wiki/426908). Here is a table for individual downloads:
+A few best whole image models are available for downloading at this Google Drive [folder](https://drive.google.com/drive/folders/0B1PVLadG_dCKV2pZem5MTjc1cHc?resourcekey=0-t4vtopuv27D9NnMC97w6hg&usp=sharing). YaroslavNet is the DM challenge top-performing team's [method](https://www.synapse.org/#!Synapse:syn9773040/wiki/426908). Here is a table for model AUCs:
 
-| Database  | Patch Classifier  | Top Layers (two blocks)  | Single AUC  | Augmented AUC  | Link  |
-|---|---|---|---|---|---|
-| DDSM  | Resnet50  | \[512-512-1024\]x2  | 0.86  | 0.88  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKSUJYdzNyZjVsZHc)  |
-| DDSM  | VGG16  | 512x1  | 0.83  | 0.86  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKYnREWlJQZ2JaSDQ)  |
-| DDSM  | VGG16  | \[512-512-1024\]x2  | 0.85  | 0.88  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKdVQzbDRLNTZ4TXM)  |
-| DDSM | YaroslavNet | heatmap + max pooling + FC16-8 + shortcut | 0.83 | 0.86 | [download](https://drive.google.com/open?id=0B1PVLadG_dCKVk9RM1dMeTkwcTg) |
-| INbreast  | VGG16  | 512x1  | 0.92  | 0.94  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKN0ZxNFdCRWxHRFU)  |
-| INbreast  | VGG16  | \[512-512-1024\]x2  | 0.95  | 0.96  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKUnQwYVhOd2NfQlk)  |
+| Database  | Patch Classifier  | Top Layers (two blocks)  | Single AUC  | Augmented AUC  |
+|---|---|---|---|---|
+| DDSM  | Resnet50  | \[512-512-1024\]x2  | 0.86  | 0.88  |
+| DDSM  | VGG16  | 512x1  | 0.83  | 0.86  |
+| DDSM  | VGG16  | \[512-512-1024\]x2  | 0.85  | 0.88  |
+| DDSM | YaroslavNet | heatmap + max pooling + FC16-8 + shortcut | 0.83 | 0.86 |
+| INbreast  | VGG16  | 512x1  | 0.92  | 0.94  |
+| INbreast  | VGG16  | \[512-512-1024\]x2  | 0.95  | 0.96  |
 
 - Inference level augmentation is obtained by horizontal and vertical flips to generate 4 predictions.
 - The listed scores are single model AUC and prediction averaged AUC.
@@ -41,17 +41,17 @@ A few best whole image models are available for downloading at this Google Drive
 - 2 Model averaging on INbreast gives AUC of 0.96.
 
 ## Patch classifier model downloads
-Several patch classifier models (i.e. patch state) are also available for downloading at this Google Drive [folder](https://drive.google.com/open?id=0B1PVLadG_dCKV2pZem5MTjc1cHc). Here is a table for individual download:
+Several patch classifier models (i.e. patch state) are also available for downloading at this Google Drive [folder](https://drive.google.com/drive/folders/0B1PVLadG_dCKZDVNYWZ1bll0cFU?resourcekey=0-EU80p95OCgKqOZZbvJIN-w&usp=sharing). Here is a table for model acc:
 
-| Model  | Train Set | Accuracy | Link |
-|---|---|---|---|
-| Resnet50  | S10  | 0.89  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKMTc2RGV1NGF6bm8) |
-| VGG16  | S10  | 0.84  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKZUotelJBTzkwaGM) |
-| VGG19  | S10  | 0.79  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKUHFpeTgwaVFYS1E) |
-| YaroslavNet (Final) | S10 | 0.89 | [download](https://drive.google.com/open?id=0B1PVLadG_dCKSlR4V1QwTGdsbGs) |
-| Resnet50  | S30  | 0.91  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKSW1RZ0NzOVBJWHc) |
-| VGG16  | S30  | 0.86  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKbjdodnp2SlR2WFU) |
-| VGG19  | S30  | 0.89  | [download](https://drive.google.com/open?id=0B1PVLadG_dCKNUpGc3Q1dWJ5OGM) |
+| Model  | Train Set | Accuracy |
+|---|---|---|
+| Resnet50  | S10  | 0.89  |
+| VGG16  | S10  | 0.84  |
+| VGG19  | S10  | 0.79  |
+| YaroslavNet (Final) | S10 | 0.89 |
+| Resnet50  | S30  | 0.91  |
+| VGG16  | S30  | 0.86  |
+| VGG19  | S30  | 0.89  |
 
 With patch classifier models, you can convert them into any whole image classifier by adding convolutional, FC and heatmap layers on top and see for yourself.
 
